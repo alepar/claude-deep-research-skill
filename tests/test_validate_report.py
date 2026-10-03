@@ -33,6 +33,14 @@ class TestReportValidator(unittest.TestCase):
         passed, errors, _ = self.validate_text(dossier)
         self.assertTrue(passed, errors)
 
+    def test_grouped_citation_matches_each_bibliography_entry(self):
+        report = ('# Answer\n\nTwo sources support the result [1, 2].\n\n'
+                  '## Bibliography\n\n[1] Source A https://example.org/a\n'
+                  '[2] Source B https://example.org/b\n')
+        passed, errors, warnings = self.validate_text(report)
+        self.assertTrue(passed, errors)
+        self.assertEqual(warnings, [])
+
     def test_missing_citation_entry_is_focused_error(self):
         report = ('# Answer\n\nClaim [2].\n\n## Bibliography\n\n'
                   '[1] [Source](https://example.org/source)\n')

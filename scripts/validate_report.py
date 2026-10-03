@@ -15,8 +15,14 @@ from urllib.parse import unquote, urlsplit
 BIBLIOGRAPHY_HEADING = re.compile(r'^## Bibliography\s*$', re.I | re.M)
 SECTION_HEADING = re.compile(r'^## ', re.M)
 BIB_ENTRY = re.compile(r'^\[(\d+)\]\s+\S', re.M)
-CITATION = re.compile(r'\[(\d+)\](?!\()')
+CITATION = re.compile(r'\[(\d+(?:,\s*\d+)*)\](?!\()')
 MARKDOWN_LINK = re.compile(r'(?<!!)\[[^\]]+\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\)')
+
+
+def citation_numbers(text: str) -> set[str]:
+    """Read every number in a visible citation group, as package checks do."""
+    return {number.strip() for group in CITATION.findall(text)
+            for number in group.split(',')}
 
 
 class ReportValidator:
@@ -85,7 +91,7 @@ class ReportValidator:
         duplicates = sorted({number for number in entries if entries.count(number) > 1}, key=int)
         if duplicates:
             self.errors.append(f'Duplicate bibliography numbers: {", ".join(duplicates)}')
-        cited = set(CITATION.findall(body))
+        cited = citation_numbers(body)
         listed = set(entries)
         missing = sorted(cited - listed, key=int)
         if missing:
