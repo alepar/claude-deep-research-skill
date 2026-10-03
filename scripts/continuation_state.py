@@ -28,6 +28,22 @@ def _write_state(run_dir, state):
     os.replace(temporary, destination)
 
 
+def _merge_worker_returns(previous, current):
+    """Keep earlier returns unless a later checkpoint updates the same worker."""
+    merged = list(previous)
+    positions = {item.get('worker_id'): index for index, item in enumerate(merged)
+                 if isinstance(item, dict) and item.get('worker_id')}
+    for item in current:
+        worker_id = item.get('worker_id') if isinstance(item, dict) else None
+        if worker_id in positions:
+            merged[positions[worker_id]] = item
+        else:
+            if worker_id:
+                positions[worker_id] = len(merged)
+            merged.append(item)
+    return merged
+
+
 def save_checkpoint(run_dir, progress):
     """Snapshot manifest paths and progress at a section or dossier boundary."""
     run_dir = Path(run_dir)
@@ -50,6 +66,10 @@ def save_checkpoint(run_dir, progress):
     reporting = manifest.get('reporting') or {}
     previous_path = run_dir / STATE_NAME
     previous = load_checkpoint(run_dir) if previous_path.exists() else {}
+    required_worker_ids = list(dict.fromkeys(
+        previous.get('required_worker_ids', []) + progress.get('required_worker_ids', [])))
+    worker_returns = _merge_worker_returns(
+        previous.get('worker_returns', []), progress.get('worker_returns', []))
     artifacts = {'run_manifest': 'run_manifest.json'}
     for name, default in (('coverage', 'coverage.json'), ('queries', 'queries.jsonl'),
                           ('sources', 'sources.jsonl'), ('evidence', 'evidence.jsonl'),
@@ -67,9 +87,8 @@ def save_checkpoint(run_dir, progress):
         'open_gaps': progress['open_gaps'],
         'next_task': progress['next_task'],
         'words_generated': progress['words_generated'],
-        'worker_returns': progress.get('worker_returns', previous.get('worker_returns', [])),
-        'required_worker_ids': progress.get(
-            'required_worker_ids', previous.get('required_worker_ids', [])),
+        'worker_returns': worker_returns,
+        'required_worker_ids': required_worker_ids,
         'final_validation': progress.get('final_validation', {}),
         'delivery_status': progress.get('delivery_status', 'complete'),
         'retrieval_stop_reason': progress.get(
@@ -91,6 +110,9 @@ def begin_new_stretch(run_dir):
     state = load_checkpoint(run_dir)
     if select_action(state)['action'] in ('complete', 'partial'):
         raise ValueError('cannot resume a completed report')
+    if state.get('words_generated', 0) <= 0 and \
+            select_action(state)['action'] == 'validate':
+        return state
     if state.get('words_generated', 0) <= 0:
         raise ValueError('current writer stretch has no words to preserve')
     state.setdefault('completed_stretches', []).append({
@@ -121,10 +143,14 @@ def select_action(state, available_words=None, estimated_next_words=None,
                     (item.get('status') not in ('complete', 'success') or
                      item.get('joined') is not True):
                 blockers.append('worker return not joined: ' + str(item.get('worker_id')))
+        partial_dossiers = []
         for dossier in state.get('dossiers', []):
-            if not isinstance(dossier, dict) or dossier.get('status') == 'draft':
-                blockers.append('draft dossier: ' + str(dossier.get('id') if
-                                                       isinstance(dossier, dict) else dossier))
+            if not isinstance(dossier, dict) or dossier.get('status') not in \
+                    ('complete', 'partial'):
+                blockers.append('incomplete dossier: ' + str(dossier.get('id') if
+                                                            isinstance(dossier, dict) else dossier))
+            elif dossier.get('status') == 'partial':
+                partial_dossiers.append(dossier)
         checks = state.get('final_validation') or {}
         required = list(REQUIRED_VALIDATION_CHECKS)
         if not state.get('dossiers'):
@@ -135,9 +161,18 @@ def select_action(state, available_words=None, estimated_next_words=None,
         blockers.extend('failed final validation: ' + name for name in failed)
         gaps = state.get('open_gaps') or []
         partial = (state.get('delivery_status') == 'partial' and
-                   state.get('retrieval_stop_reason') == 'budget-exhausted')
+                   state.get('retrieval_stop_reason') == 'budget-exhausted' and bool(gaps))
         if gaps and not partial:
             blockers.append('open material gaps require a qualified budget-limited partial')
+        if state.get('delivery_status') == 'partial' and not partial:
+            blockers.append('partial delivery requires a budget limit and explicit open gap')
+        for dossier in partial_dossiers:
+            facet_ids = dossier.get('facet_ids') or []
+            has_dossier_gap = any(isinstance(gap, dict) and
+                                  gap.get('facet_id') in facet_ids for gap in gaps)
+            if not partial or not has_dossier_gap:
+                blockers.append('partial dossier requires qualified facet gap: ' +
+                                str(dossier.get('id')))
         if blockers:
             return {'action': 'blocked', 'mechanism': None,
                     'basis': 'completion-gates', 'blockers': blockers}

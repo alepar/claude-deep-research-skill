@@ -76,6 +76,23 @@ class ContinuationStateTests(unittest.TestCase):
         state = continuation_state.save_checkpoint(self.run_dir, progress)
         self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
 
+    def test_partial_dossier_requires_qualified_partial_and_explicit_gap(self):
+        progress = self.ready_progress()
+        self.manifest['reporting']['dossiers'][1]['status'] = 'partial'
+        (self.run_dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        progress['delivery_status'] = 'partial'
+        progress['retrieval_stop_reason'] = 'budget-exhausted'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        progress['open_gaps'] = [{'facet_id': 'facet-a', 'question': 'Unrelated gap'}]
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        progress['open_gaps'] = [{'facet_id': 'facet-b', 'question': 'Unknown outcome'}]
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'partial')
+
     def test_complete_and_truthful_budget_partial_are_distinct(self):
         progress = self.ready_progress()
         state = continuation_state.save_checkpoint(self.run_dir, progress)
@@ -95,12 +112,32 @@ class ContinuationStateTests(unittest.TestCase):
         self.assertEqual(resumed['final_validation']['package'], 'unrun')
         self.assertEqual(continuation_state.select_action(resumed)['action'], 'validate')
 
+    def test_repeated_resume_during_validation_does_not_append_empty_stretch(self):
+        progress = self.ready_progress()
+        progress['final_validation']['package'] = 'unrun'
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        first = continuation_state.begin_new_stretch(self.run_dir)
+        second = continuation_state.begin_new_stretch(self.run_dir)
+        self.assertEqual(second, first)
+        self.assertEqual(len(second['completed_stretches']), 1)
+        self.assertEqual(continuation_state.select_action(second)['action'], 'validate')
+
     def test_later_checkpoint_cannot_silently_drop_required_worker_ids(self):
         progress = self.ready_progress()
         progress['worker_returns'] = []
         continuation_state.save_checkpoint(self.run_dir, progress)
         progress.pop('required_worker_ids')
         progress.pop('worker_returns')
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(state['required_worker_ids'], ['worker-a'])
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+
+    def test_explicit_empty_lists_cannot_drop_pending_worker_join(self):
+        progress = self.ready_progress()
+        progress['worker_returns'] = []
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        progress['required_worker_ids'] = []
+        progress['worker_returns'] = []
         state = continuation_state.save_checkpoint(self.run_dir, progress)
         self.assertEqual(state['required_worker_ids'], ['worker-a'])
         self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
