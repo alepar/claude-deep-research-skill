@@ -29,16 +29,25 @@ class TestInitRun(unittest.TestCase):
             self.assertEqual(out['status'], 'ok')
 
             # Manifest exists and has correct fields
-            manifest = json.load(open(os.path.join(d, 'run_manifest.json')))
+            with open(os.path.join(d, 'run_manifest.json')) as f:
+                manifest = json.load(f)
             self.assertEqual(manifest['version'], '3.0.0')
             self.assertEqual(manifest['query'], 'test question')
             self.assertEqual(manifest['mode'], 'deep')
             self.assertIsNotNone(manifest['started_at'])
             self.assertIsNone(manifest['finished_at'])
             self.assertEqual(manifest['artifact_paths']['sources'], 'sources.jsonl')
+            self.assertEqual(manifest['artifact_paths']['coverage'], 'coverage.json')
+            self.assertEqual(manifest['artifact_paths']['queries'], 'queries.jsonl')
+            with open(os.path.join(d, 'coverage.json')) as f:
+                coverage = json.load(f)
+            self.assertEqual(coverage['schema_version'], 1)
+            self.assertEqual(coverage['question'], 'test question')
+            self.assertEqual(coverage['initial_facets'], [])
+            self.assertIsNone(coverage['stop'])
 
             # Empty JSONL files exist
-            for name in ('sources.jsonl', 'evidence.jsonl', 'claims.jsonl'):
+            for name in ('sources.jsonl', 'evidence.jsonl', 'claims.jsonl', 'queries.jsonl'):
                 path = os.path.join(d, name)
                 self.assertTrue(os.path.exists(path), f'{name} missing')
                 self.assertEqual(os.path.getsize(path), 0)

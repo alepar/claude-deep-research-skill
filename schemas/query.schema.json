@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResearchQuery",
+  "description": "One append-only queries.jsonl row. Cross-file references require verify_coverage.py.",
+  "type": "object",
+  "required": ["query_id", "round", "facet_ids", "gap", "family", "query", "provider", "expected_evidence", "result_source_ids", "new_relevant_source_ids", "coverage_changed", "notes"],
+  "properties": {
+    "query_id": { "type": "string", "minLength": 1 },
+    "round": { "type": "integer", "minimum": 1 },
+    "facet_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+    "gap": { "type": "string", "minLength": 1 },
+    "family": { "enum": ["literal", "synonym", "disciplinary", "entity", "source-specific", "counterevidence", "citation-neighborhood", "vocabulary-probe", "delta"] },
+    "query": { "type": "string", "minLength": 1 },
+    "provider": { "type": "string", "minLength": 1 },
+    "expected_evidence": { "type": "string", "minLength": 1 },
+    "result_source_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "new_relevant_source_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "coverage_changed": { "type": "boolean" },
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}

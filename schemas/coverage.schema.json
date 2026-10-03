@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResearchCoverage",
+  "description": "Latest saved question coverage. Cross-file references and stop logic require verify_coverage.py.",
+  "type": "object",
+  "required": ["schema_version", "question", "initial_facets", "facets", "completed_rounds", "stop"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "question": { "type": "string" },
+    "initial_facets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question", "priority"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "priority": { "enum": ["high", "supporting"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "facets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "question", "priority", "source_types", "status", "active", "query_ids", "evidence_ids", "contested_positions", "counterevidence", "gap_note", "scope_change"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "priority": { "enum": ["high", "supporting"] },
+          "source_types": { "type": "array", "items": { "type": "string" } },
+          "status": { "enum": ["unsearched", "searched", "supported", "contested", "unresolved"] },
+          "active": { "type": "boolean" },
+          "query_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "evidence_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "contested_positions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["position", "evidence_ids"],
+              "properties": {
+                "position": { "type": "string", "minLength": 1 },
+                "evidence_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true }
+              },
+              "additionalProperties": false
+            }
+          },
+          "counterevidence": { "enum": ["unchecked", "searched-none-found", "found", "not-applicable"] },
+          "gap_note": { "type": "string" },
+          "scope_change": {
+            "type": ["object", "null"],
+            "required": ["previous_priority", "new_priority", "reason"],
+            "properties": {
+              "previous_priority": { "enum": ["high", "supporting"] },
+              "new_priority": { "enum": ["high", "supporting"] },
+              "reason": { "type": "string", "minLength": 1 },
+              "supporting_evidence_ids": { "type": "array", "items": { "type": "string" } },
+              "user_scope_reason": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "completed_rounds": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["round", "query_ids", "families", "target_high_priority_facet_ids", "new_relevant_source_ids", "material_changes", "coverage_ready_after"],
+        "properties": {
+          "round": { "type": "integer", "minimum": 1 },
+          "query_ids": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+          "families": { "type": "array", "items": { "$ref": "#/$defs/family" }, "minItems": 1, "uniqueItems": true },
+          "target_high_priority_facet_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "new_relevant_source_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "material_changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["facet_id", "kind", "before", "after"],
+              "properties": {
+                "facet_id": { "type": "string" },
+                "kind": { "enum": ["status", "counterevidence", "contested_position", "priority", "facet_added", "scope_change"] },
+                "before": {},
+                "after": {}
+              },
+              "additionalProperties": false
+            }
+          },
+          "coverage_ready_after": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "stop": { "$ref": "run_manifest.schema.json#/properties/retrieval_stop" }
+  },
+  "$defs": {
+    "family": { "enum": ["literal", "synonym", "disciplinary", "entity", "source-specific", "counterevidence", "citation-neighborhood", "vocabulary-probe", "delta"] }
+  },
+  "additionalProperties": false
+}

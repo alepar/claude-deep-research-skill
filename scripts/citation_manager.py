@@ -111,6 +111,8 @@ def cmd_init_run(args: argparse.Namespace) -> None:
         'sources': 'sources.jsonl',
         'evidence': 'evidence.jsonl',
         'claims': 'claims.jsonl',
+        'coverage': 'coverage.json',
+        'queries': 'queries.jsonl',
         'report': 'report.md',
     }
 
@@ -136,10 +138,26 @@ def cmd_init_run(args: argparse.Namespace) -> None:
         f.write('\n')
 
     # Create empty artifact files
-    for name in ('sources', 'evidence', 'claims'):
+    for name in ('sources', 'evidence', 'claims', 'queries'):
         p = os.path.join(out_dir, artifact_paths[name])
         if not os.path.exists(p):
             open(p, 'w').close()
+
+    coverage_path = os.path.join(out_dir, artifact_paths['coverage'])
+    if not os.path.exists(coverage_path):
+        coverage = {
+            'schema_version': 1,
+            'question': args.query or '',
+            'initial_facets': [],
+            'facets': [],
+            'completed_rounds': [],
+            'stop': None,
+        }
+        temporary_path = coverage_path + '.tmp'
+        with open(temporary_path, 'w') as f:
+            json.dump(coverage, f, indent=2, ensure_ascii=False)
+            f.write('\n')
+        os.replace(temporary_path, coverage_path)
 
     print(json.dumps({'status': 'ok', 'manifest': manifest_path, 'dir': out_dir}))
 

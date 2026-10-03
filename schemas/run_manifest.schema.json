@@ -75,7 +75,23 @@
         "sources": { "type": "string", "default": "sources.jsonl" },
         "evidence": { "type": "string", "default": "evidence.jsonl" },
         "claims": { "type": "string", "default": "claims.jsonl" },
-        "report": { "type": "string", "default": "report.md" }
+        "report": { "type": "string", "default": "report.md" },
+        "coverage": { "type": "string", "default": "coverage.json" },
+        "queries": { "type": "string", "default": "queries.jsonl" }
+      },
+      "additionalProperties": false
+    },
+    "retrieval_stop": {
+      "type": ["object", "null"],
+      "description": "Mirrors coverage.json.stop after retrieval ends.",
+      "required": ["reason", "at", "round", "unresolved_high_priority_facet_ids", "remaining_gaps", "basis"],
+      "properties": {
+        "reason": { "enum": ["coverage-saturated", "budget-exhausted", "critical-error"] },
+        "at": { "type": "string", "format": "date-time" },
+        "round": { "type": "integer", "minimum": 0 },
+        "unresolved_high_priority_facet_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "remaining_gaps": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "basis": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": false
     },
