@@ -12,7 +12,7 @@ metrics: none (Workflow fallback feedback delivered through Herdr; no duplicate 
 ## Remaining
 
 - No task in the Beads epic remains open. Empirical recall improvement is unmeasured; a pooled-source evaluation is described in `spec.md`. Source: Beads epic `claude-deep-research-skill-2mu`; `spec.md` Post-Implementation Notes.
-- Merge into `main` is pending the owner's integration decision. Source: `run.md` branch/base fields.
+- Merged locally into `main` after the owner's integration decision. Source: `run.md` branch/base fields and the `main` history.
 
 ## Gotchas & surprises
 
