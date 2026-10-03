@@ -13,6 +13,8 @@ roast-design: 2026-10-03-layered-research-prompts-roast-design-1.md
 roastDesignRound: 1
 roastCodeRound: 1
 roast-code: 2026-10-03-layered-research-prompts-roast-pr-1.md
+stepBackCode-round-1: targeted repair — no design change; restore delivery and rendering gates
+scope-filter: 10 in-scope · 0 punch-listed
 graph-pass: no safe edge cuts; schema precedes reporting prompts, and integration follows validation
 
 approvals:
