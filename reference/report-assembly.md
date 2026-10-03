@@ -1,158 +1,125 @@
-# Report Assembly: Progressive File Generation
+# Report Assembly
 
-## Length Requirements by Mode
+## Choose the delivered shape
 
-| Mode | Target Words | Description |
-|------|--------------|-------------|
-| Quick | 2,000-4,000 | Baseline quality threshold |
-| Standard | 4,000-8,000 | Comprehensive analysis |
-| Deep | 8,000-15,000 | Thorough investigation |
-| UltraDeep | 15,000-20,000+ | Maximum rigor (at output limit) |
+Deliver a final Markdown report by default. Put it in the user's requested
+destination; otherwise use `~/Documents/[Topic]_Research_[YYYYMMDD]/`. Keep the
+package self-contained. Render the final report as HTML or PDF only when asked;
+keep the linked Markdown dossiers in the delivered folder unless rendered
+dossiers were also requested. Do not open files automatically.
 
----
+Deep and UltraDeep runs plan linked dossiers from the start. Standard runs use
+them when several facets have substantial independent evidence or a single
+report would bury useful detail. Quick runs normally produce one compact
+report. The lead may choose another shape when the request or evidence warrants
+it and records why. Size each dossier by its evidence and importance. Size the
+final synthesis for the reader's decision. Do not enforce finding counts,
+section word targets, citation-density targets, or prose percentages.
 
-## Output Token Safeguard
+## Initialize and preserve the research record
 
-**Claude Code default limit:** 32,000 output tokens (~24,000 words total per execution)
-
-**Practical limits:**
-- Target <=20,000 words total output
-- Leave safety margin for tool call overhead
-- Reports >20,000 words require auto-continuation (see continuation.md)
-
----
-
-## Progressive Section Generation
-
-**Core Strategy:** Generate and write each section individually using Write/Edit tools. This allows unlimited report length while keeping each generation manageable.
-
-### Phase 8.1: Setup
+Start the run before retrieval:
 
 ```bash
-# Create folder: ~/Documents/[TopicName]_Research_[YYYYMMDD]/
-mkdir -p ~/Documents/[folder_name]
-
-# Initialize markdown file with frontmatter
-# Path: [folder]/research_report_[YYYYMMDD]_[slug].md
+python scripts/citation_manager.py init-run --out-dir [run_folder] --query "[question]" --mode [mode]
 ```
 
-### Phase 8.2: Section Generation Loop
+This creates `run_manifest.json`, `coverage.json`, `queries.jsonl`,
+`sources.jsonl`, `evidence.jsonl`, and `claims.jsonl`. The original question and
+`coverage.initial_facets` anchor scope. Record screened queries and completed
+rounds; register source and evidence IDs in the canonical files. A source may
+appear in several dossiers under the same stable source ID. Source similarity
+does not determine facet scope.
 
-**Pattern:** Generate section -> Write/Edit to file -> Move to next section
-Each Write/Edit call contains ONE section (<=2,000 words per call)
-
-**Initialize the run before retrieval (persist to disk):**
-```bash
-# Create run manifest and artifact files using citation_manager CLI
-python scripts/citation_manager.py init-run --out-dir [folder] --query "[question]" --mode [mode]
-# Creates: run_manifest.json, sources.jsonl, evidence.jsonl, claims.jsonl,
-#          coverage.json, queries.jsonl
-```
-
-At scope, fill `coverage.json` with the original question, immutable
-`initial_facets`, current `facets`, empty `completed_rounds`, and `stop: null`.
-Quick mode does this without a formal plan. During retrieval, append one
-`queries.jsonl` row for each screened query and update coverage after each
-completed round. Set a query's `coverage_changed` flag when it caused a material
-facet change, and record that change in the round's `material_changes`. Keep the
-query log as provenance; findings still require real sources and passages in
-`sources.jsonl` and `evidence.jsonl`.
-
-After the final retrieval round, write the same stop decision to
-`coverage.json.stop` and `run_manifest.json.retrieval_stop`. Its reason is
-`coverage-saturated`, `budget-exhausted`, or `critical-error`; include the time,
-round, basis, unresolved high-priority facet IDs, and remaining gaps. A budget
-stop permits a qualified partial report with open gaps. Verify the saved
-decision before packaging:
+Before drafting, save one retrieval stop decision in both `coverage.json.stop`
+and `run_manifest.json.retrieval_stop`. Use `coverage-saturated`,
+`budget-exhausted`, or `critical-error`, including basis, unresolved high
+priority facets, and remaining gaps. If drafting exposes a material gap, reopen
+retrieval with `delta` queries and a new round, then save a fresh stop. Run:
 
 ```bash
-python scripts/verify_coverage.py --dir [folder]
+python scripts/verify_coverage.py --dir [run_folder]
 ```
 
-The validator checks structure and references, not evidence relevance or a
-measured recall level. If outline refinement or critique reopens retrieval,
-append the new `delta` queries and completed rounds, replace the earlier stop,
-and validate again.
+Its result checks structural consistency; the lead still judges whether the
+evidence answers each facet and whether contrary positions were fairly sought.
 
-**Register each source as you encounter it:**
+## Build facet dossiers
+
+Group by answerable facet first. A dossier may cover closely related facets,
+but list their IDs in `run_manifest.reporting.dossiers[].facet_ids`. Inside it,
+group related sources and competing positions. Each Markdown dossier has a
+short summary, facet question and answer, supported claims, counterevidence,
+methods and limits, and open gaps. Detailed passages belong here when useful.
+
+The lead owns `run_manifest.json` and all canonical ledgers. It adds the
+optional `reporting` object with `output_mode`, relative `final_report_path`,
+and dossier rows: stable `id`, relative Markdown `path`, `facet_ids`,
+`source_ids`, `evidence_ids`, `claim_ids`, and `status` (`draft`, `complete`, or
+`partial`). A worker writes only its exclusive dossier path. Give each worker
+the assigned facets and canonical IDs, permitted inputs, a bounded task, and a
+stop condition. Its return names output path, covered facets, source/evidence/
+claim IDs, candidate evidence, unresolved gaps, and status. The lead waits for
+all required returns, registers any new evidence itself, updates coverage, and
+verifies each returned dossier. When subagents are unavailable, perform the
+same tasks sequentially.
+
+Use artifact-qualified claim section IDs such as `dossier-a:findings` and
+`final:synthesis`. A factual statement needs an original source citation and
+a registered claim/evidence trail. Write its visible citation and validator
+anchor together:
+
+```markdown
+The intervention reduced events in the trial [1]. <!-- claim: 0123456789abcdef; evidence: abcdef0123456789; source: fedcba9876543210 -->
+```
+
+The IDs are the real 16-character IDs from `claims.jsonl`, `evidence.jsonl`,
+and `sources.jsonl`; the display number comes from the canonical source
+registry. Declare all dossier IDs used in its manifest row. A dossier is a
+derived reading artifact, never an original source for the final report.
+
+## Synthesize the final report
+
+Read dossier summaries first, then inspect underlying evidence for every
+material conclusion used in the final. Reconcile overlapping or conflicting
+dossiers explicitly. The final report gives the direct answer, cross-facet
+synthesis, useful recommendations, limits and open gaps, final retrieval stop
+reason, methodology, and bibliography. Link every delivered dossier with a
+relative Markdown link. Mark each covered facet where discussed, for example
+`<!-- facet: facet-a -->`. For factual final claims, cite original registered
+sources with visible `[N]` and the same claim/evidence/source anchor; create
+`final:*` claim records. Do not cite a dossier as the source of a fact.
+
+Assign display numbers from the source registry when rendering:
+
 ```bash
-python scripts/citation_manager.py register-source \
-  --json '{"raw_url": "...", "title": "...", "source_type": "academic", "year": "2024"}' \
-  --dir [folder]
-# Returns stable source_id (sha256-based, survives renumbering and continuation)
+python scripts/citation_manager.py assign-display-numbers --dir [run_folder]
 ```
 
-**Assign display numbers after all sources registered:**
+Display numbers are presentation only. Do not persist them as source identity
+or rely on a working-memory citation list. Derive each bibliography entry from
+the registry, with its correct `[N]`, title, and original URL. Include an
+entry for every number cited in the final body; do not use ranges or truncated
+placeholders.
+
+## Validate and deliver
+
 ```bash
-python scripts/citation_manager.py assign-display-numbers --dir [folder]
-# Maps stable source_ids to [1], [2], [3]... for rendering
+python scripts/verify_coverage.py --dir [run_folder]
+python scripts/verify_claim_support.py verify --dir [run_folder] --strict
+python scripts/validate_report_package.py --dir [run_folder]
+python scripts/verify_citations.py --report [final_report_path]
 ```
 
-Source identity is stable across edits and continuation. Display numbers are derived at render time, never stored in state. This survives context compaction and enables continuation agents to pick up citation state via stable IDs.
+Run the relevant HTML/PDF check only when that format was requested. The
+package validator checks facet markers, dossier links, declared IDs, visible
+citations, and bibliography against the canonical record; it cannot establish
+that prose is semantically entailed by evidence. Review that question directly
+for material claims and contradictions. Repair a failing artifact and rerun
+the affected check; widen validation only when the repair can affect another
+check. If evidence remains insufficient, remove or qualify the claim or reopen
+retrieval. A budget-limited package can be delivered with explicit open gaps
+and supported remaining claims.
 
-**Section sequence:**
-
-1. **Executive Summary** (200-400 words)
-   - Tool: Write(file, frontmatter + Executive Summary)
-   - Track citations
-   - Progress: "Executive Summary complete"
-
-2. **Introduction** (400-800 words)
-   - Tool: Edit(file, append Introduction)
-   - Track citations
-   - Progress: "Introduction complete"
-
-3. **Finding 1-N** (600-2,000 words each)
-   - Tool: Edit(file, append Finding N)
-   - Track citations
-   - Progress: "Finding N complete"
-
-4. **Synthesis & Insights**
-   - Novel insights beyond source statements
-   - Tool: Edit(append)
-
-5. **Limitations & Caveats**
-   - Counterevidence, gaps, uncertainties, and unresolved high-priority facets
-   - State the final retrieval stop reason and any budget-limited search gaps
-   - Tool: Edit(append)
-
-6. **Recommendations**
-   - Immediate actions, next steps, research needs
-   - Tool: Edit(append)
-
-7. **Bibliography** (CRITICAL)
-   - EVERY citation from citations_used list
-   - NO ranges, NO placeholders, NO truncation
-   - Tool: Edit(append)
-
-8. **Methodology Appendix**
-   - Research process, query families, coverage and verification approach
-   - State the final stop reason, basis, completed rounds, and remaining gaps
-   - Tool: Edit(append)
-
----
-
-## File Organization
-
-**1. Create dedicated folder:**
-- Location: `~/Documents/[TopicName]_Research_[YYYYMMDD]/`
-- Clean topic name (remove special chars, use underscores)
-
-**2. File naming convention:**
-All files use same base name:
-- `research_report_20251104_topic_slug.md`
-- `research_report_20251104_topic_slug.html`
-- `research_report_20251104_topic_slug.pdf`
-
-**3. Also save copy to:** `~/.claude/research_output/` (internal tracking)
-
----
-
-## Word Count Per Section
-
-**CRITICAL:** No single Edit call should exceed 2,000 words.
-
-Example: 10 findings x 1,500 words = 15,000 words total
-- Each Edit call: 1,500 words (under limit)
-- File grows to 15,000 words
-- No single tool call exceeds limits
+Save a continuation checkpoint after each completed section or dossier using
+`scripts/continuation_state.py`; see [continuation.md](continuation.md).
