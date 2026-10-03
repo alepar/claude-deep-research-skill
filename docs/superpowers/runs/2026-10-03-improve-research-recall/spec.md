@@ -106,4 +106,8 @@ Tasks 1 and 2 can proceed independently. Task 3 consumes both and performs the f
 
 ## Post-Implementation Notes
 
-To be filled after implementation: changed files, validation results, any deviations, and observed limitations.
+Implemented on `super-auto/recall-retrieval` in three closed Beads children under `claude-deep-research-skill-2mu`. The skill and methodology now use facet coverage, distinct query families, evidence-driven follow-ups, guarded vocabulary expansion, and a two-round post-readiness saturation rule. `citation_manager.py` initializes coverage and query artifacts; `verify_coverage.py` checks saved IDs, rounds, scope, counterevidence provenance, and stop consistency. The engine scaffold, quality gates, report instructions, and README describe the same workflow.
+
+The full standard-library suite passed 68 tests after the final validator fix. The independent branch review's structural false-stop and schema-field findings were fixed and rechecked. The Workflow tool was absent in this harness; the user authorized ordinary subagents as the substitute, recorded in `friction.md`. This was a workflow deviation, not a code feature.
+
+No empirical recall benchmark was run. The validator cannot judge source relevance, independent corroboration, or the truth of historical decisions beyond saved records. The later pooled-source evaluation described above remains useful before claiming measurable recall gains.
