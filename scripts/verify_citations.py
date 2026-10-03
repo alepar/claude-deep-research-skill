@@ -89,26 +89,30 @@ class CitationVerifier:
                 num = match_num.group(1)
                 rest = match_num.group(2)
 
-                # Try to parse: Author (Year). "Title". Venue. URL
-                year_match = re.search(r'\((\d{4})\)', rest)
-                title_match = re.search(r'"([^"]+)"', rest)
-                doi_match = re.search(r'doi\.org/(10\.\S+)', rest)
-                url_match = re.search(r'https?://[^\s\)]+', rest)
-
-                current_entry = {
-                    'num': num,
-                    'raw': rest,
-                    'year': year_match.group(1) if year_match else None,
-                    'title': title_match.group(1) if title_match else None,
-                    'doi': doi_match.group(1) if doi_match else None,
-                    'url': url_match.group(0) if url_match else None
-                }
+                current_entry = {'num': num, 'raw': rest}
             elif current_entry:
                 # Multi-line entry, append to raw
                 current_entry['raw'] += ' ' + line
 
         if current_entry:
             entries.append(current_entry)
+
+        for entry in entries:
+            raw = entry['raw']
+            year_match = re.search(r'\((\d{4})\)', raw)
+            markdown_link = re.search(r'\[([^\]]+)\]\(\s*(https?://[^\s)]+)\s*\)', raw)
+            quoted_title = re.search(r'"([^"]+)"', raw)
+            url_match = re.search(r'https?://[^\s)]+', raw)
+            url = markdown_link.group(2) if markdown_link else (
+                url_match.group(0).rstrip('.,;') if url_match else None)
+            doi_match = re.search(r'doi\.org/(10\.[^\s)]+)', url or '')
+            entry.update({
+                'year': year_match.group(1) if year_match else None,
+                'title': markdown_link.group(1) if markdown_link else (
+                    quoted_title.group(1) if quoted_title else None),
+                'doi': doi_match.group(1) if doi_match else None,
+                'url': url,
+            })
 
         return entries
 

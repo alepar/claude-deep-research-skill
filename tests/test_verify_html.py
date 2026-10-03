@@ -57,6 +57,69 @@ class TestHTMLVerifier(unittest.TestCase):
         self.assertTrue(any('dossier' in error.lower() for error in errors))
         self.assertTrue(any('bibliography' in error.lower() for error in errors))
 
+    def test_invisible_claim_and_facet_comments_do_not_break_rendering(self):
+        md = ('# Answer\n\n<!-- facet: facet-a -->\n\n'
+              'A clear factual finding appears here [1]. '
+              '<!-- claim: abc; evidence: def; source: ghi -->\n\n'
+              '## Bibliography\n\n[1] [Source A](https://example.org/a)\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] '
+                '<a href="https://example.org/a">Source A</a></p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertTrue(passed, errors)
+
+    def test_swapped_citations_between_claims_fail(self):
+        md = ('# Answer\n\nFirst distinct claim cites alpha [1]. '
+              'Second distinct claim cites beta [2].\n\n'
+              '## Bibliography\n\n[1] Alpha https://example.org/a\n'
+              '[2] Beta https://example.org/b\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>First distinct claim cites alpha [2]. '
+                'Second distinct claim cites beta [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Alpha https://example.org/a</p>'
+                '<p>[2] Beta https://example.org/b</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertFalse(passed)
+        self.assertTrue(any('citation' in error.lower() for error in errors), errors)
+
+    def test_missing_url_on_second_bibliography_line_fails(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A\n'
+              'https://example.org/second-line\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertFalse(passed)
+        self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
+
+    def test_body_link_does_not_replace_missing_bibliography_url(self):
+        md = ('# Answer\n\nThe source has a specific finding [1]. '
+              '[Read it](https://example.org/source)\n\n'
+              '## Bibliography\n\n[1] Source A\n'
+              'https://example.org/source\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>The source has a specific finding [1]. '
+                '<a href="https://example.org/source">Read it</a></p>'
+                '<h2>Bibliography</h2><p>[1] Source A</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertFalse(passed)
+        self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
+
+    def test_missing_visible_heading_is_reported(self):
+        md = ('# Answer\n\n## Important Finding\n\n'
+              'A clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>Important Finding</p>'
+                '<p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A https://example.org/a</p>'
+                '</body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertFalse(passed)
+        self.assertTrue(any('Missing heading' in error for error in errors), errors)
+
 
 if __name__ == '__main__':
     unittest.main()

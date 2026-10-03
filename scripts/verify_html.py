@@ -18,6 +18,26 @@ def words(value: str) -> str:
     return ' '.join(re.findall(r'\w+', value.casefold(), re.UNICODE))
 
 
+def visible_markdown(value: str) -> str:
+    """Remove Markdown syntax that a normal renderer does not display."""
+    value = re.sub(r'<!--.*?-->', '', value, flags=re.S)
+    value = re.sub(MARKDOWN_LINK,
+                   lambda match: match.group(0).split('](')[0][1:], value)
+    return re.sub(r'^#{1,6}\s+', '', value, flags=re.M)
+
+
+def citation_contexts(value: str):
+    """Keep each citation beside its surrounding visible words."""
+    tokens = re.findall(r'\[\d+(?:,\s*\d+)*\]|\w+', value.casefold(), re.UNICODE)
+    result = []
+    for index, token in enumerate(tokens):
+        if re.fullmatch(r'\[\d+(?:,\s*\d+)*\]', token):
+            before = tuple(t for t in tokens[max(0, index - 5):index] if not t.startswith('['))
+            after = tuple(t for t in tokens[index + 1:index + 6] if not t.startswith('['))
+            result.append((re.sub(r'\s+', '', token), before, after))
+    return result
+
+
 class Document(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -26,8 +46,11 @@ class Document(HTMLParser):
         self.body_parts = []
         self.headings = []
         self.heading = None
+        self.heading_start = None
         self.links = []
+        self.link_positions = []
         self.current_href = None
+        self.current_link_start = None
         self.link_text = []
 
     def handle_starttag(self, tag, attrs):
@@ -36,17 +59,22 @@ class Document(HTMLParser):
             self.body_depth += 1
         if re.fullmatch(r'h[1-6]', tag):
             self.heading = []
+            self.heading_start = len(self.body_parts)
         if tag == 'a':
             self.current_href = dict(attrs).get('href')
+            self.current_link_start = len(self.body_parts)
             self.link_text = []
 
     def handle_endtag(self, tag):
         if re.fullmatch(r'h[1-6]', tag) and self.heading is not None:
-            self.headings.append((''.join(self.heading).strip(), len(self.body_parts)))
+            self.headings.append((''.join(self.heading).strip(), self.heading_start))
             self.heading = None
+            self.heading_start = None
         if tag == 'a' and self.current_href is not None:
             self.links.append((self.current_href, ''.join(self.link_text).strip()))
+            self.link_positions.append((self.current_href, self.current_link_start))
             self.current_href = None
+            self.current_link_start = None
         if tag == 'body':
             self.body_depth = max(0, self.body_depth - 1)
 
@@ -94,7 +122,7 @@ class HTMLVerifier:
 
         self._check_content(md_body, html_body, doc)
         self._check_citations(md_body, html_body)
-        self._check_bibliography(bibliography, html_bib, doc)
+        self._check_bibliography(bibliography, html_bib, doc, bib_heading)
         self._check_local_links(md, doc)
         self._print_results()
         return not self.errors
@@ -114,6 +142,7 @@ class HTMLVerifier:
         for heading in re.findall(r'^#{1,6}\s+(.+)$', md_body, re.M):
             if words(heading) not in html_headings:
                 self.errors.append(f'Missing heading in HTML: {heading}')
+        md_body = visible_markdown(md_body)
         for paragraph in re.split(r'\n\s*\n', md_body):
             if re.match(r'^#{1,6}\s+', paragraph):
                 paragraph = re.sub(r'^#{1,6}\s+.*$', '', paragraph, flags=re.M)
@@ -128,14 +157,21 @@ class HTMLVerifier:
         if missing:
             self.errors.append('Missing source citations in HTML body: ' +
                                ', '.join(sorted(missing, key=int)))
+        if citation_contexts(visible_markdown(md_body)) != citation_contexts(html_body):
+            self.errors.append('Source citation placement changed in HTML body')
 
-    def _check_bibliography(self, bibliography, html_bib, doc):
+    def _check_bibliography(self, bibliography, html_bib, doc, bib_heading):
         if bibliography is None:
             return
         if not html_bib:
             self.errors.append('Bibliography section missing from HTML')
             return
-        for number, entry in re.findall(r'^\[(\d+)\]\s+(.+)$', bibliography, re.M):
+        entries = list(re.finditer(r'^\[(\d+)\]\s+(.+?)(?=^\[\d+\]\s+|\Z)',
+                                   bibliography, re.M | re.S))
+        bib_hrefs = {href for href, position in doc.link_positions
+                     if bib_heading is not None and position >= bib_heading}
+        for match in entries:
+            number, entry = match.group(1), match.group(2).strip()
             entry_title = re.sub(r'https?://\S+', '', entry)
             entry_title = re.sub(MARKDOWN_LINK,
                                  lambda match: match.group(0).split('](')[0][1:], entry_title)
@@ -143,7 +179,7 @@ class HTMLVerifier:
             urls = re.findall(r'https?://[^\s)]+', entry)
             if (not re.search(rf'\[{re.escape(number)}\]|(?<!\d){re.escape(number)}\.', html_bib)
                     or (entry_title and entry_title not in words(html_bib))
-                    or any(url not in html_bib and url not in [href for href, _ in doc.links]
+                    or any(url not in html_bib and url not in bib_hrefs
                            for url in urls)):
                 self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
 
