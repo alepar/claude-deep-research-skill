@@ -41,12 +41,38 @@ mkdir -p ~/Documents/[folder_name]
 **Pattern:** Generate section -> Write/Edit to file -> Move to next section
 Each Write/Edit call contains ONE section (<=2,000 words per call)
 
-**Initialize research run (persist to disk):**
+**Initialize the run before retrieval (persist to disk):**
 ```bash
 # Create run manifest and artifact files using citation_manager CLI
 python scripts/citation_manager.py init-run --out-dir [folder] --query "[question]" --mode [mode]
-# Creates: run_manifest.json, sources.jsonl, evidence.jsonl, claims.jsonl
+# Creates: run_manifest.json, sources.jsonl, evidence.jsonl, claims.jsonl,
+#          coverage.json, queries.jsonl
 ```
+
+At scope, fill `coverage.json` with the original question, immutable
+`initial_facets`, current `facets`, empty `completed_rounds`, and `stop: null`.
+Quick mode does this without a formal plan. During retrieval, append one
+`queries.jsonl` row for each screened query and update coverage after each
+completed round. Set a query's `coverage_changed` flag when it caused a material
+facet change, and record that change in the round's `material_changes`. Keep the
+query log as provenance; findings still require real sources and passages in
+`sources.jsonl` and `evidence.jsonl`.
+
+After the final retrieval round, write the same stop decision to
+`coverage.json.stop` and `run_manifest.json.retrieval_stop`. Its reason is
+`coverage-saturated`, `budget-exhausted`, or `critical-error`; include the time,
+round, basis, unresolved high-priority facet IDs, and remaining gaps. A budget
+stop permits a qualified partial report with open gaps. Verify the saved
+decision before packaging:
+
+```bash
+python scripts/verify_coverage.py --dir [folder]
+```
+
+The validator checks structure and references, not evidence relevance or a
+measured recall level. If outline refinement or critique reopens retrieval,
+append the new `delta` queries and completed rounds, replace the earlier stop,
+and validate again.
 
 **Register each source as you encounter it:**
 ```bash
@@ -86,7 +112,8 @@ Source identity is stable across edits and continuation. Display numbers are der
    - Tool: Edit(append)
 
 5. **Limitations & Caveats**
-   - Counterevidence, gaps, uncertainties
+   - Counterevidence, gaps, uncertainties, and unresolved high-priority facets
+   - State the final retrieval stop reason and any budget-limited search gaps
    - Tool: Edit(append)
 
 6. **Recommendations**
@@ -99,7 +126,8 @@ Source identity is stable across edits and continuation. Display numbers are der
    - Tool: Edit(append)
 
 8. **Methodology Appendix**
-   - Research process, verification approach
+   - Research process, query families, coverage and verification approach
+   - State the final stop reason, basis, completed rounds, and remaining gaps
    - Tool: Edit(append)
 
 ---

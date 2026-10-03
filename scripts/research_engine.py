@@ -126,7 +126,7 @@ class ResearchState:
 
 
 class ResearchEngine:
-    """Main research orchestration engine"""
+    """Print phase instructions and persist state; Claude conducts the research."""
 
     def __init__(self, mode: ResearchMode = ResearchMode.STANDARD):
         self.mode = mode
@@ -163,16 +163,21 @@ class ResearchEngine:
 Your task: Define research boundaries and success criteria
 
 ## Execute:
-1. Decompose the question into 3-5 core components
+1. Preserve the user's question and decompose it into 3-8 answerable facets
 2. Identify 2-4 key stakeholder perspectives
 3. Define what's IN scope and what's OUT of scope
-4. List 3-5 success criteria for this research
-5. Document 3-5 assumptions that need validation
+4. Mark each facet high or supporting priority; list expected source types, a
+   plausible counterargument, and the gap if evidence is absent
+5. Initialize the run with citation_manager.py init-run. Save coverage.json
+   with question, immutable initial_facets, current facets,
+   empty completed_rounds, and stop=null before retrieval. Quick mode does this too.
+6. List success criteria and assumptions to validate
 
 ## Output Format:
 ```json
 {
-  "core_components": ["component1", "component2", ...],
+  "facets": [{"id": "F1", "question": "answerable subquestion", "priority": "high",
+              "source_types": ["primary documentation"], "gap_note": "why it matters"}],
   "stakeholder_perspectives": ["perspective1", "perspective2", ...],
   "in_scope": ["item1", "item2", ...],
   "out_of_scope": ["item1", "item2", ...],
@@ -182,6 +187,8 @@ Your task: Define research boundaries and success criteria
 ```
 
 Use extended reasoning to explore multiple framings before finalizing scope.
+Keep initial facet IDs and questions throughout the run. Record a justified
+scope_change before demoting or deactivating any initial high-priority facet.
 """,
             ResearchPhase.PLAN: """
 # Phase 2: PLAN
@@ -189,56 +196,81 @@ Use extended reasoning to explore multiple framings before finalizing scope.
 Your task: Create intelligent research roadmap
 
 ## Execute:
-1. Identify 5-10 primary sources to investigate
-2. List 5-10 secondary/backup sources
-3. Map knowledge dependencies (what must be understood first)
-4. Create 10-15 search query variations
-5. Plan triangulation approach (how to verify claims)
-6. Define 3-5 quality gates
+1. Identify primary and secondary source types for each high-priority facet
+2. Map knowledge dependencies (what must be understood first)
+3. Plan distinct query families for concrete facet gaps, beginning with the
+   user's literal wording and including counterevidence where meaningful
+4. Plan triangulation, a time/tool budget, and quality gates
 
 ## Output Format:
 ```json
 {
-  "primary_sources": ["source_type1", "source_type2", ...],
-  "secondary_sources": ["source_type1", "source_type2", ...],
+  "source_types_by_facet": {"F1": ["primary documentation", "independent review"]},
   "knowledge_dependencies": {"concept1": ["prerequisite1", "prerequisite2"], ...},
-  "search_queries": ["query1", "query2", ...],
+  "planned_queries": [{"facet_ids": ["F1"], "family": "literal",
+                       "gap": "specific gap", "expected_evidence": "source/passage"}],
+  "retrieval_budget": "time or tool limit",
   "triangulation_strategy": "description of verification approach",
   "quality_gates": ["gate1", "gate2", ...]
 }
 ```
 
-Use Graph-of-Thoughts: branch into 3-4 potential research paths, evaluate, then converge on optimal strategy.
+Branch into plausible research paths, then prioritize those serving the scoped
+high-priority facets. Quick mode skips this formal plan, not the facet ledger.
 """,
             ResearchPhase.RETRIEVE: """
 # Phase 3: RETRIEVE
 
-Your task: Systematically collect information from multiple sources
+Your task: Find evidence for the scoped facets and record a defensible stop
 
 ## Execute:
-1. Use WebSearch with iterative query refinement (minimum 10 searches)
-2. Use WebFetch to deep-dive into 5-10 most promising sources
-3. Extract key passages with metadata
-4. Track information gaps
-5. Follow 2-3 promising tangents
-6. Ensure source diversity (different domains, perspectives)
+1. Before date-sensitive queries, get today's date. Begin with the user's literal
+   terms and distinct synonym, disciplinary, entity, source-specific, or
+   counterevidence families chosen for high-priority gaps.
+2. For each query, name facet IDs, gap, family, expected evidence, and why it
+   differs from previous searches. Use search-cli first when available, then
+   WebSearch or an appropriate configured provider; fetch promising sources.
+3. If literal results suggest a vocabulary mismatch, a 2-3 sentence hypothetical
+   answer may supply at most five candidate terms for at most two expanded
+   queries. Keep the literal query. Generated text, entities, dates, and numbers
+   are unverified query aids, never evidence or citations.
+4. Register and deduplicate sources canonically, screen relevance, and persist
+   direct passages with locators in evidence.jsonl. Log each query and screened
+   yield and coverage_changed in queries.jsonl; update coverage.json after each
+   completed round. Mark coverage_changed only when the round records a material
+   facet change, and preserve the immutable initial_facets snapshot.
+5. Choose follow-ups from the highest-priority concrete gap: unsearched facet,
+   weak claim, contradiction, missing counterargument/source type, or newly
+   discovered in-scope issue. Inspect scholarly citation neighborhoods once
+   when central papers and citation links are available.
+6. Record completed_rounds with query IDs, families, target high-priority facets,
+   new relevant canonical source IDs, material changes, and coverage_ready_after.
+   Keep source diversity and independence checks alongside facet coverage.
 
 ## Tools to Use:
-- WebSearch: For current information and broad coverage
+- search-cli: Primary provider when installed and configured
+- WebSearch: Fallback or domain-restricted search
 - WebFetch: For detailed extraction from specific URLs
 - Grep/Read: For local documentation if relevant
-- Task: Spawn 2-3 parallel retrieval agents for efficiency
+- Subagents: Optional focused deep dives when the environment permits
 
 ## Output:
-Store all sources with metadata. Each source should include:
-- URL/location
-- Title
-- Key excerpts
-- Relevance score
-- Source type
-- Retrieved timestamp
-
-Aim for 15-30 distinct sources minimum.
+Coverage is ready only if every active high-priority facet has direct evidence,
+completed counterevidence checking (or a documented not-applicable reason), and
+both evidenced sides plus an explanation for any contested facet. Once ready,
+run two subsequent low-yield residual probe rounds targeting high-priority facets.
+The rounds must use distinct query families across them and address the
+remaining high-priority gaps; one mixed-family round does not count twice.
+A round is low yield only with zero new relevant canonical
+sources and zero material facet changes. New relevant evidence or a material
+change resets the count. Stop as coverage-saturated only while readiness holds
+and the last two post-readiness rounds meet this test. Otherwise continue within
+budget. At budget exhaustion, stop as budget-exhausted and record every
+unresolved high-priority facet and remaining gap; use critical-error for a
+truly critical tool/data failure.
+Write the identical stop decision to coverage.json and run_manifest.json, then
+run verify_coverage.py. Source totals and credibility are diagnostics, not stop
+gates. This structural check cannot judge relevance or guarantee recall.
 """,
             ResearchPhase.TRIANGULATE: """
 # Phase 4: TRIANGULATE
@@ -279,6 +311,10 @@ Your task: Validate information across multiple independent sources
   ]
 }
 ```
+
+If triangulation exposes a new essential facet or critical gap, reopen retrieval
+through coverage.json and queries.jsonl. A prior stop must be replaced after
+targeted searches and fresh validation.
 """,
             ResearchPhase.SYNTHESIZE: """
 # Phase 5: SYNTHESIZE
@@ -337,6 +373,11 @@ Your task: Rigorously evaluate research quality
 - What counterfactuals should be considered?
 - What would a skeptic say?
 
+If critique finds a new essential in-scope facet or critical knowledge gap,
+reopen Phase 3: update coverage.json, log targeted delta queries, screen and
+persist evidence, and record a fresh validated stop. Carry budget-limited gaps
+into the report. A writing-only issue needs no new search.
+
 ## Output Format:
 ```json
 {
@@ -366,6 +407,9 @@ Your task: Address gaps and strengthen weak areas
 4. Resolve contradictions where possible
 5. Enhance clarity and structure
 6. Verify all revised content
+
+Any additional retrieval follows the same coverage ledger, query log, and
+stop rules. Replace the prior stop when new evidence changes the ledger.
 
 ## Focus On:
 - High priority improvements from critique
@@ -422,6 +466,7 @@ Your task: Deliver professional, actionable research report
 [Known gaps]
 [Assumptions]
 [Areas of uncertainty]
+[Final retrieval stop reason and unresolved high-priority facets]
 
 ## Recommendations
 [Action items]
@@ -437,16 +482,19 @@ Your task: Deliver professional, actionable research report
 [Research process]
 [Sources consulted]
 [Verification approach]
+[Final retrieval stop reason, basis, completed rounds, and remaining gaps]
 ```
 
-Save report to file with timestamp.
+Save report to file with timestamp. Validate coverage structurally with
+verify_coverage.py --dir [run folder], then run citation and report checks.
+Coverage validation cannot judge source relevance or independent corroboration.
 """
         }
 
         return instructions.get(phase, "No instructions available for this phase")
 
     def execute_phase(self, phase: ResearchPhase) -> Dict[str, Any]:
-        """Execute a research phase"""
+        """Display instructions for a phase; no research is performed here."""
         print(f"\n{'='*80}")
         print(f"PHASE {phase.value.upper()}: Starting...")
         print(f"{'='*80}\n")
@@ -465,7 +513,7 @@ Save report to file with timestamp.
         return result
 
     def run_pipeline(self, query: str) -> str:
-        """Run complete research pipeline"""
+        """Display phase templates and return a suggested report path."""
         print(f"\n{'#'*80}")
         print(f"# DEEP RESEARCH ENGINE")
         print(f"# Query: {query}")
@@ -478,7 +526,7 @@ Save report to file with timestamp.
         # Determine phases based on mode
         phases = self._get_phases_for_mode()
 
-        # Execute each phase
+        # Display each phase template; Claude performs the actual work.
         for phase in phases:
             self.state.phase = phase
             result = self.execute_phase(phase)
@@ -486,14 +534,14 @@ Save report to file with timestamp.
             # Save state after each phase
             state_file = self.output_dir / f"research_state_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             self.state.save(state_file)
-            print(f"\n✓ Phase {phase.value} complete. State saved to: {state_file}\n")
+            print(f"\nPhase {phase.value} instructions displayed. Scaffold state saved to: {state_file}\n")
 
         # Generate report path
         report_file = self.output_dir / f"research_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
 
         print(f"\n{'='*80}")
-        print(f"RESEARCH PIPELINE COMPLETE")
-        print(f"Report will be saved to: {report_file}")
+        print("RESEARCH INSTRUCTIONS DISPLAYED")
+        print(f"Suggested report path for Claude: {report_file}")
         print(f"{'='*80}\n")
 
         return str(report_file)
@@ -576,7 +624,7 @@ Examples:
     # Run pipeline
     report_path = engine.run_pipeline(args.query)
 
-    print(f"\nResearch complete! Report path: {report_path}")
+    print(f"\nInstruction scaffold complete. Suggested report path: {report_path}")
     print(f"\nNow Claude should execute each phase using the displayed instructions.")
 
 

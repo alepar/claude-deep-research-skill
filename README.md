@@ -1,12 +1,12 @@
 # Deep Research Skill for Claude Code
 
-Enterprise-grade research engine for Claude Code. Produces citation-backed reports with source credibility scoring, multi-provider search, and automated validation.
+A Claude Code skill for citation-backed research reports. It guides source discovery, records evidence and question coverage on disk, and validates report and retrieval artifacts. Claude runs the research; `scripts/research_engine.py` prints phase instructions and saves scaffold state.
 
 ## Installation
 
 ```bash
 # Clone into Claude Code skills directory
-git clone https://github.com/199-biotechnologies/claude-deep-research-skill.git ~/.claude/skills/deep-research
+git clone https://github.com/alepar/claude-deep-research-skill.git ~/.claude/skills/deep-research
 ```
 
 No additional dependencies required for basic usage.
@@ -45,11 +45,13 @@ Scope &rarr; Plan &rarr; **Retrieve** (parallel search + agents) &rarr; Triangul
 
 Key features:
 - **Step 0**: Retrieves current date before searches (prevents stale training-data year assumptions)
-- **Parallel retrieval**: 5-10 concurrent searches + 2-3 focused sub-agents returning structured evidence objects
-- **First Finish Search**: Adaptive quality thresholds by mode
-- **Critique loop-back**: Phase 6 can return to Phase 3 with delta-queries if critical gaps found
+- **Coverage-led retrieval**: 3-8 answerable facets, with high-priority gaps and expected source types recorded before searching, including Quick mode
+- **Distinct query families**: Literal wording first, then targeted synonyms, field terms, entities, source-specific searches, and counterevidence; optional guarded vocabulary expansion and scholarly citation chasing
+- **Evidence-driven follow-ups**: Log each query, screened yield, and material facet change; choose the next query from the largest decision-relevant gap
+- **Explicit stop**: Coverage readiness followed by two distinct, low-yield residual rounds, or a budget/critical-error stop with unresolved gaps
+- **Critique loop-back**: New essential in-scope gaps reopen Phase 3 through the same ledger and query log
 - **Multi-persona red teaming**: Skeptical Practitioner, Adversarial Reviewer, Implementation Engineer (Deep/UltraDeep)
-- **Disk-persisted citations**: `sources.json` survives context compaction and continuation agents
+- **Disk-persisted artifacts**: `sources.jsonl`, `evidence.jsonl`, `claims.jsonl`, `coverage.json`, `queries.jsonl`, and `run_manifest.json` survive context compaction
 
 ## Output
 
@@ -62,11 +64,14 @@ Reports >18K words auto-continue via recursive agent spawning with context prese
 
 ## Quality Standards
 
-- 10+ sources, 3+ per major claim
+- 10+ sources is a depth diagnostic, never an automatic retrieval stop; major claims need 3+ independent sources
+- Each high-priority facet needs direct evidence and a counterevidence check or documented exception; contested facets need evidenced material sides
+- Final stop reason and unresolved gaps appear in Methodology Appendix and Limitations
 - Executive summary 200-400 words
 - Findings 600-2,000 words each, prose-first (>=80%)
 - Full bibliography with URLs, no placeholders
-- Automated validation: `validate_report.py` (9 checks) + `verify_citations.py` (DOI/URL/hallucination detection)
+- Structural retrieval check: `python scripts/verify_coverage.py --dir [run_folder]`; this does not judge source relevance or measure recall
+- Report checks: `validate_report.py` and `verify_citations.py` (citation and metadata checks)
 - Validation loop: validate &rarr; fix &rarr; retry (max 3 cycles)
 
 ## Search Tools
@@ -97,9 +102,11 @@ deep-research/
 │   ├── verify_citations.py           # DOI/URL/hallucination checker
 │   ├── source_evaluator.py           # Source credibility scoring
 │   ├── citation_manager.py           # Citation tracking
+│   ├── verify_coverage.py            # Structural retrieval/stop validation
 │   ├── md_to_html.py                 # Markdown to HTML converter
 │   ├── verify_html.py                # HTML verification
-│   └── research_engine.py            # Core orchestration engine
+│   └── research_engine.py            # Phase instruction/state scaffold
+├── schemas/                          # Artifact schemas
 └── tests/
     └── fixtures/                     # Test report fixtures
 ```
