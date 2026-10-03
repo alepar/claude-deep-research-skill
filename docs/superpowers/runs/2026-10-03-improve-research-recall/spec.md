@@ -106,6 +106,8 @@ Tasks 1 and 2 can proceed independently. Task 3 consumes both and performs the f
 
 ## Post-Implementation Notes
 
+**Changes vs. original design (2026-10-03):** The independent code review required a recorded query and material transition for checked counterevidence, and explicit checks for required artifact fields. Counterevidence may arise from any query family when its facet and same-round change are logged. The user-authorized direct-subagent workflow replaced unavailable Workflow orchestration for this run.
+
 Implemented on `super-auto/recall-retrieval` in three closed Beads children under `claude-deep-research-skill-2mu`. The skill and methodology now use facet coverage, distinct query families, evidence-driven follow-ups, guarded vocabulary expansion, and a two-round post-readiness saturation rule. `citation_manager.py` initializes coverage and query artifacts; `verify_coverage.py` checks saved IDs, rounds, scope, counterevidence provenance, and stop consistency. The engine scaffold, quality gates, report instructions, and README describe the same workflow.
 
 The full standard-library suite passed 68 tests after the final validator fix. The independent branch review's structural false-stop and schema-field findings were fixed and rechecked. The Workflow tool was absent in this harness; the user authorized ordinary subagents as the substitute, recorded in `friction.md`. This was a workflow deviation, not a code feature.
