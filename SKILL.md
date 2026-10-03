@@ -28,6 +28,7 @@ The report must make material factual claims traceable to evidence and complete 
 - [Quality gates](./reference/quality-gates.md): concrete checks and recovery
 - [Continuation](./reference/continuation.md): capacity-led handoff from saved state
 - [HTML generation](./reference/html-generation.md): load only when HTML or PDF is requested
+- [WeasyPrint PDF guidelines](./reference/weasyprint_guidelines.md): load directly when PDF is requested
 - [Report template](./templates/report_template.md): illustrative structure, subordinate to the contracts above
 
 Run the applicable checks in `scripts/`, including `verify_coverage.py`, `verify_claim_support.py`, and citation/report validators. `research_engine.py` prints optional phase guidance and saves a scaffold; the agent performs the research.

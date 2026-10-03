@@ -1,103 +1,48 @@
-# HTML Generation: McKinsey Style Report
+# Optional HTML and PDF delivery
 
-## Design Principles
+Generate HTML or PDF only when the user requests it. Put the rendered file in
+the user's requested destination, or beside the final Markdown report in the
+default research folder. Include the final Markdown report and linked dossiers
+in the delivered folder. Do not open files automatically.
 
-- Sharp corners (NO border-radius)
-- Muted corporate colors (navy #003d5c, gray #f8f9fa)
-- Ultra-compact layout
-- Info-first structure
-- 14px base font, compact spacing
-- No decorative gradients or colors
-- NO EMOJIS in final HTML
+## HTML
 
----
+Render the complete final Markdown content, including its answer, synthesis,
+uncertainty, methodology, bibliography, and links to dossiers. Preserve each
+relative dossier link so it resolves from the HTML file's location in the
+delivered package. If the HTML file is in a different subdirectory, adjust
+those links and verify their targets.
 
-## Generation Steps
+The optional [HTML template](../templates/mckinsey_report_template.html) is
+one presentation choice. It has placeholders for title, date, source count,
+metrics, content, and bibliography. Populate only metrics actually supported
+by registered evidence; an empty dashboard is preferable to invented metrics.
+The helper in scripts/md_to_html.py returns content and bibliography fragments
+for traditional multi-section reports. Its command-line entry point prints a
+preview, not a finished HTML file, and its conversion may omit text before the
+first level-two heading. Inspect the full rendered output, especially for a
+compact final report, before using those fragments.
 
-### Step 1: Read McKinsey Template
-Load template from: `./templates/mckinsey_report_template.html`
+Run:
 
-### Step 2: Extract Key Metrics
-Extract 3-4 key quantitative findings for dashboard display at top.
+    python scripts/verify_html.py --html [html_path] --md [final_report_path]
 
-### Step 3: Convert MD to HTML
+Check that all material Markdown content and bibliography entries survive
+conversion, each original source citation remains readable, and every dossier
+link opens the intended local Markdown file. Repair only the defective rendered
+part, then rerun the affected checks. The Markdown package remains the
+authoritative evidence trail.
 
-Use Python script:
-```bash
-cd ~/.claude/skills/deep-research
-python scripts/md_to_html.py [markdown_report_path]
-```
+## PDF
 
-**Script outputs two parts:**
-- **Part A ({{CONTENT}}):** All sections except Bibliography
-- **Part B ({{BIBLIOGRAPHY}}):** Bibliography section only
+Use [WeasyPrint guidelines](weasyprint_guidelines.md) for print layout when
+generating a PDF. A typical command is:
 
-**Script handles all conversion:**
-- Headers: `##` -> `<div class="section"><h2 class="section-title">`
-- Headers: `###` -> `<h3 class="subsection-title">`
-- Lists: Markdown bullets -> `<ul><li>` with nesting
-- Tables: Markdown tables -> `<table>` with thead/tbody
-- Paragraphs: Text wrapped in `<p>` tags
-- Bold/italic: `**text**` -> `<strong>`, `*text*` -> `<em>`
-- Citations: [N] preserved for tooltip conversion
+    weasyprint [html_path] [pdf_path]
 
-### Step 4: Add Citation Tooltips (Optional)
-
-Attribution Gradients - wrap each [N] citation:
-```html
-<span class="citation">[N]
-  <span class="citation-tooltip">
-    <div class="tooltip-title">[Source Title]</div>
-    <div class="tooltip-source">[Author/Publisher]</div>
-    <div class="tooltip-claim">
-      <div class="tooltip-claim-label">Supports Claim:</div>
-      [Extract sentence with this citation]
-    </div>
-  </span>
-</span>
-```
-NOTE: This step is optional for speed. Basic [N] citations are sufficient.
-
-### Step 5: Replace Template Placeholders
-
-| Placeholder | Content |
-|-------------|---------|
-| {{TITLE}} | Report title (from first ## heading) |
-| {{DATE}} | Generation date (YYYY-MM-DD) |
-| {{SOURCE_COUNT}} | Number of unique sources |
-| {{METRICS_DASHBOARD}} | Metrics HTML from step 2 |
-| {{CONTENT}} | HTML from Part A |
-| {{BIBLIOGRAPHY}} | HTML from Part B |
-
-### Step 6: Verify HTML
-
-```bash
-python scripts/verify_html.py --html [html_path] --md [md_path]
-```
-- Pass: Proceed to open
-- Fail: Fix errors and re-run
-
-### Step 7: Open in Browser
-```bash
-open [html_path]
-```
-
----
-
-## PDF Generation
-
-**Option A: WeasyPrint Direct (Preferred)**
-
-1. Create print-optimized HTML following `./reference/weasyprint_guidelines.md`
-2. Critical CSS:
-   - `page-break-inside: avoid` on tables, boxes
-   - `page-break-after: avoid` on headings
-   - `orphans: 3; widows: 3` on paragraphs
-   - Use `display: table` not Flexbox/Grid
-   - Font sizes in pt (10pt body, 8pt citations)
-3. Generate: `weasyprint [html_path] [pdf_path]`
-4. Open: `open [pdf_path]`
-
-**Option B: generating-pdf Skill**
-
-Use Task tool with general-purpose agent, invoke generating-pdf skill.
+Check legibility, page breaks, bibliography, and any dossier links in the PDF.
+Deliver the linked Markdown folder alongside the PDF. If PDF links cannot
+reliably open the accompanying Markdown, state clearly in the PDF that the
+detailed dossiers are in that folder. A provider or renderer failure affects
+only the requested rendered format; retain the verified Markdown package and
+report the specific rendering blocker.

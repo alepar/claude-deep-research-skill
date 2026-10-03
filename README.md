@@ -67,7 +67,7 @@ Reports >18K words auto-continue via recursive agent spawning with context prese
 - 10+ sources is a depth diagnostic, never an automatic retrieval stop; major claims need 3+ independent sources
 - Each high-priority facet needs direct evidence and a counterevidence check or documented exception; contested facets need evidenced material sides
 - Final stop reason and unresolved gaps appear in Methodology Appendix and Limitations
-- Executive summary 200-400 words
+- Final synthesis sized to the decision and supported by linked evidence dossiers
 - Findings 600-2,000 words each, prose-first (>=80%)
 - Full bibliography with URLs, no placeholders
 - Structural retrieval check: `python scripts/verify_coverage.py --dir [run_folder]`; this does not judge source relevance or measure recall
@@ -98,7 +98,7 @@ deep-research/
 │   ├── report_template.md            # Report structure template
 │   └── mckinsey_report_template.html # HTML report template
 ├── scripts/
-│   ├── validate_report.py            # 9-check structure validator
+│   ├── validate_report.py            # 6-check Markdown surface validator
 │   ├── verify_citations.py           # DOI/URL/hallucination checker
 │   ├── source_evaluator.py           # Source credibility scoring
 │   ├── citation_manager.py           # Citation tracking
