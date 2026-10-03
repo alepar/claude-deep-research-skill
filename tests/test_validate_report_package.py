@@ -121,6 +121,17 @@ class TestReportPackage(unittest.TestCase):
         code, result = self.run_check()
         self.assertEqual((code, result['status']), (0, 'ok'), result)
 
+    def test_markdown_package_can_request_both_html_and_pdf(self):
+        self.manifest['reporting']['requested_formats'] = ['html', 'pdf']
+        code, result = self.run_check()
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_requested_formats_rejects_duplicates_and_unknown_values(self):
+        for formats in (['html', 'html'], ['html', 'docx'], 'html'):
+            with self.subTest(formats=formats):
+                self.manifest['reporting']['requested_formats'] = formats
+                self.assert_invalid('requested_formats')
+
     def test_duplicate_dossier_id_fails(self):
         self.manifest['reporting']['dossiers'][1]['id'] = 'dossier-alpha'
         self.assert_invalid('duplicate dossier ID')

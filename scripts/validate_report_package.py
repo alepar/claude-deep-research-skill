@@ -170,6 +170,12 @@ def verify(directory):
         return {'status': 'invalid', 'errors': ['reporting must be an object']}
     if reporting.get('output_mode') not in {'markdown', 'html', 'pdf'}:
         errors.append('reporting output_mode must be markdown, html, or pdf')
+    requested_formats = reporting.get('requested_formats', [])
+    if (not isinstance(requested_formats, list) or
+            any(not isinstance(value, str) or value not in {'html', 'pdf'}
+                for value in requested_formats) or
+            len(requested_formats) != len(set(requested_formats))):
+        errors.append('reporting requested_formats must be a unique array of html/pdf')
     paths = manifest.get('artifact_paths', {})
     try:
         coverage = load_json(directory / paths.get('coverage', 'coverage.json'))
