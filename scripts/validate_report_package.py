@@ -66,20 +66,31 @@ def check_ids(values, index, label, kind, errors):
     if not isinstance(values, list):
         errors.append(f'{label} must be an array')
         return []
-    if len(values) != len(set(map(str, values))):
-        errors.append(f'{label} has duplicate IDs')
+    valid = []
     for value in values:
+        if not isinstance(value, str):
+            errors.append(f'{label} has invalid {kind} ID: {value!r}')
+        else:
+            valid.append(value)
+    if len(valid) != len(set(valid)):
+        errors.append(f'{label} has duplicate IDs')
+    for value in valid:
         if value not in index:
             errors.append(f'{label} references unknown {kind}: {value}')
-    return values
+    return valid
 
 
 def check_anchors(markdown, label, expected_claim_ids, claims, evidence, sources,
-                  display_numbers, errors):
+                  display_numbers, errors, declared=None):
     found = set()
     for match in ANCHOR.finditer(markdown):
         claim_id, evidence_id, source_id = match.groups()
         found.add(claim_id)
+        if declared is not None:
+            for kind, value in [('claim', claim_id), ('evidence', evidence_id),
+                                ('source', source_id)]:
+                if value not in declared[kind]:
+                    errors.append(f'{label} anchor {kind} missing from dossier manifest: {value}')
         if not ID.fullmatch(claim_id) or claim_id not in claims:
             errors.append(f'{label} references unknown claim: {claim_id}')
             continue
@@ -106,6 +117,43 @@ def check_anchors(markdown, label, expected_claim_ids, claims, evidence, sources
     for claim_id in expected_claim_ids - found:
         errors.append(f'{label} missing claim anchor: {claim_id}')
     return found
+
+
+def check_bibliography(markdown, sources, errors):
+    """Match final display numbers and identifying fields to canonical sources."""
+    heading = re.search(r'^## Bibliography\s*$', markdown, re.MULTILINE | re.IGNORECASE)
+    if not heading:
+        errors.append('final report missing Bibliography section')
+        return
+    body = markdown[:heading.start()]
+    section = markdown[heading.end():]
+    next_heading = re.search(r'^##\s+', section, re.MULTILINE)
+    if next_heading:
+        section = section[:next_heading.start()]
+    entries = {}
+    entry_matches = list(re.finditer(r'^\[(\d+)\]\s+(.+)$', section, re.MULTILINE))
+    for i, match in enumerate(entry_matches):
+        number = int(match.group(1))
+        end = entry_matches[i + 1].start() if i + 1 < len(entry_matches) else len(section)
+        entry = section[match.start(2):end].strip()
+        if number in entries:
+            errors.append(f'duplicate bibliography entry: [{number}]')
+        entries[number] = entry
+    source_order = list(sources.values())
+    for number, entry in entries.items():
+        if number < 1 or number > len(source_order):
+            errors.append(f'bibliography [{number}] has no registered source')
+            continue
+        source = source_order[number - 1]
+        title = source.get('title')
+        locator = source.get('raw_url')
+        if not title or not locator or title.casefold() not in entry.casefold() or locator not in entry:
+            errors.append(f'bibliography [{number}] does not match registered source')
+    for group in re.findall(r'\[(\d+(?:,\s*\d+)*)\]', body):
+        for raw_number in group.split(','):
+            number = int(raw_number.strip())
+            if number not in entries:
+                errors.append(f'missing bibliography entry: [{number}]')
 
 
 def verify(directory):
@@ -167,11 +215,14 @@ def verify(directory):
                 errors.append(f'{label} claim {cid} is not supported')
         if path:
             check_anchors(path.read_text(encoding='utf-8'), label,
-                          set(claim_ids), claims, evidence, sources, display_numbers, errors)
+                          set(claim_ids), claims, evidence, sources, display_numbers, errors,
+                          declared={'claim': set(claim_ids), 'evidence': set(evidence_ids),
+                                    'source': set(source_ids)})
     for fid in active_high - covered:
         errors.append(f'active high-priority facet {fid} has no dossier')
     if final_path:
         final = final_path.read_text(encoding='utf-8')
+        check_bibliography(final, sources, errors)
         found_facets = set(FACET.findall(final))
         for fid in active_high - found_facets:
             errors.append(f'final report omits active high-priority facet: {fid}')
@@ -186,8 +237,8 @@ def verify(directory):
                 if link_path:
                     linked.add(link_path)
         for did, dossier in dossiers.items():
-            path = (directory / dossier.get('path', '')).resolve()
-            if path not in linked:
+            path = resolved_path(directory, dossier.get('path'), f'dossier {did}', [])
+            if path and path not in linked:
                 errors.append(f'final report missing link to dossier {did}')
         final_claims = {cid for cid, claim in claims.items()
                         if str(claim.get('section_id', '')).startswith('final:')

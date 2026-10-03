@@ -55,7 +55,12 @@ class TestReportPackage(unittest.TestCase):
             {'id': 'facet/alpha', 'priority': 'high', 'active': True, 'status': 'supported'},
             {'id': 'facet-beta', 'priority': 'high', 'active': True, 'status': 'supported'},
         ]}
-        self.sources = [{'source_id': SOURCE_A}, {'source_id': SOURCE_B}]
+        self.sources = [
+            {'source_id': SOURCE_A, 'title': 'Alpha source',
+             'raw_url': 'https://example.org/alpha'},
+            {'source_id': SOURCE_B, 'title': 'Beta source',
+             'raw_url': 'https://example.org/beta'},
+        ]
         self.evidence = [{'evidence_id': EVIDENCE_A, 'source_id': SOURCE_A},
                          {'evidence_id': EVIDENCE_B, 'source_id': SOURCE_B}]
         self.claims = [
@@ -73,7 +78,8 @@ class TestReportPackage(unittest.TestCase):
                       + marker('1' * 16, EVIDENCE_A, SOURCE_A)
                       + '\n\n<!-- facet: facet/alpha -->\n<!-- facet: facet-beta -->\n'
                       + '\nSee [Alpha](dossiers/alpha.md) and [Beta](dossiers/beta.md).\n'
-                      + '\n## Bibliography\n\n[1] Alpha source.\n')
+                      + '\n## Bibliography\n\n'
+                      + '[1] [Alpha source](https://example.org/alpha).\n')
         self.alpha = '# Alpha\n\nAlpha works [1]. ' + marker(CLAIM_A, EVIDENCE_A, SOURCE_A)
         self.beta = '# Beta\n\nBeta works [2]. ' + marker(CLAIM_B, EVIDENCE_B, SOURCE_B)
 
@@ -166,6 +172,42 @@ class TestReportPackage(unittest.TestCase):
     def test_declared_dossier_claim_must_be_present_in_its_file(self):
         self.alpha = self.alpha.replace(marker(CLAIM_A, EVIDENCE_A, SOURCE_A), '')
         self.assert_invalid('missing claim anchor')
+
+    def test_final_citation_requires_bibliography_entry(self):
+        self.final = self.final.replace(
+            '[1] [Alpha source](https://example.org/alpha).', '')
+        self.assert_invalid('missing bibliography entry: [1]')
+
+    def test_bibliography_entry_must_match_registered_source(self):
+        self.final = self.final.replace('https://example.org/alpha',
+                                        'https://example.org/fabricated')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_bibliography_entry_cannot_swap_source_numbers(self):
+        self.final = self.final.replace(
+            '[1] [Alpha source](https://example.org/alpha)',
+            '[1] [Beta source](https://example.org/beta)')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_dossier_anchor_claim_must_be_declared(self):
+        self.manifest['reporting']['dossiers'][0]['claim_ids'] = []
+        self.assert_invalid('anchor claim missing from dossier manifest')
+
+    def test_dossier_anchor_evidence_must_be_declared(self):
+        self.manifest['reporting']['dossiers'][0]['evidence_ids'] = []
+        self.assert_invalid('anchor evidence missing from dossier manifest')
+
+    def test_dossier_anchor_source_must_be_declared(self):
+        self.manifest['reporting']['dossiers'][0]['source_ids'] = []
+        self.assert_invalid('anchor source missing from dossier manifest')
+
+    def test_malformed_dossier_path_returns_structured_error(self):
+        del self.manifest['reporting']['dossiers'][0]['path']
+        self.assert_invalid('relative path')
+
+    def test_malformed_reference_list_returns_structured_error(self):
+        self.manifest['reporting']['dossiers'][0]['claim_ids'] = [{'id': CLAIM_A}]
+        self.assert_invalid('invalid claim ID')
 
 
 if __name__ == '__main__':
