@@ -11,11 +11,15 @@ This document contains the detailed methodology for conducting deep research. Th
 **Objective:** Define research boundaries and success criteria
 
 **Activities:**
-1. Decompose the question into core components
+1. Preserve the user's original question and decompose it into 3–8 answerable facets. Mark each `high` if it is necessary for the user's decision, otherwise `supporting`.
 2. Identify stakeholder perspectives
 3. Define scope boundaries (what's in/out)
-4. Establish success criteria
-5. List key assumptions to validate
+4. For each facet, name expected source types, a plausible counterargument, and the gap that would matter if evidence is absent. Initialize `coverage.json` with the immutable `initial_facets` snapshot and current `facets` rows before searching. Quick mode does this despite skipping Phase 2.
+5. Establish success criteria and list key assumptions to validate
+
+Keep the original question as the scope anchor. Evidence may reveal a new essential in-scope facet. Never erase an initial facet: preserve its ID and initial snapshot. If evidence or an explicit user-scope reason justifies removing or demoting one, retain an inactive or supporting current row with a `scope_change` record (`previous_priority`, `new_priority`, `reason`, and supporting evidence IDs or the explicit user-scope reason). A new facet gets a unique ID.
+
+Write `coverage.json` as the latest state after each round; retain `question`, `initial_facets`, `facets`, `completed_rounds`, and `stop` (initially `null`). An old run without coverage artifacts has unavailable coverage; do not infer a clean stop from its source totals.
 
 **Ultrathink Application:** Use extended reasoning to explore multiple framings of the question before committing to scope.
 
@@ -30,163 +34,67 @@ This document contains the detailed methodology for conducting deep research. Th
 **Activities:**
 1. Identify primary and secondary sources
 2. Map knowledge dependencies (what must be understood first)
-3. Create search query strategy with variants
+3. Plan distinct query families for high-priority facets, starting with the user's literal terms and choosing variants for specific evidence gaps
 4. Plan triangulation approach
 5. Estimate time/effort per phase
 6. Define quality gates
 
 **Graph-of-Thoughts:** Branch into multiple potential research paths, then converge on optimal strategy.
 
-**Output:** Research plan with prioritized investigation paths
+**Output:** Research plan with prioritized investigation paths, expected evidence, and a retrieval budget. Quick mode makes these decisions directly from its scope ledger without a separate plan document.
 
 ---
 
-## Phase 3: RETRIEVE - Parallel Information Gathering
+## Phase 3: RETRIEVE - Coverage-Led Information Gathering
 
-**Objective:** Systematically collect information from multiple sources using parallel execution for maximum speed
+**Objective:** Find decision-relevant evidence for the scoped facets, preserve its provenance, and make an explicit retrieval stop decision. This procedure applies to Quick, Standard, Deep, and UltraDeep modes. Parallelize independent searches when useful, but finish screening and ledger updates before declaring a round complete.
 
-**CRITICAL: Execute ALL searches in parallel using a single message with multiple tool calls**
+### Query planning and execution
 
-### Query Decomposition Strategy
+**Step 0: Get the current date.** Before date-sensitive searches, retrieve today's date with `date +%Y-%m-%d`; use that date for filters and recency checks.
 
-Before launching searches, decompose the research question into 5-10 independent search angles:
+**Step 1: Select distinct queries from the ledger.** The first batch must retain the user's literal wording and address high-priority facets. Choose variants because they seek different evidence, not to reach a query count:
 
-1. **Core topic (semantic search)** - Meaning-based exploration of main concept
-2. **Technical details (keyword search)** - Specific terms, APIs, implementations
-3. **Recent developments (date-filtered)** - What's new in last 12-18 months (use current date from Step 0)
-4. **Academic sources (domain-specific)** - Papers, research, formal analysis
-5. **Alternative perspectives (comparison)** - Competing approaches, criticisms
-6. **Statistical/data sources** - Quantitative evidence, metrics, benchmarks
-7. **Industry analysis** - Commercial applications, market trends
-8. **Critical analysis/limitations** - Known problems, failure modes, edge cases
+| Family | Use when |
+|---|---|
+| `literal` | Preserve the user's terms as the baseline query. |
+| `synonym` | Search acronyms or alternate wording. |
+| `disciplinary` | Search the terminology used by a relevant field. |
+| `entity` | Look for an evidenced organization, product, person, or event. |
+| `source-specific` | Search likely primary repositories, agencies, or documentation. |
+| `counterevidence` | Test a plausible contrary claim or failure mode. |
+| `citation-neighborhood` | Inspect references and citing papers of central scholarly publications once when the source interface exposes them. |
+| `vocabulary-probe` | Expand vocabulary under the guard below. |
+| `delta` | Fill a specific gap revealed by outline refinement or critique. |
 
-### Parallel Execution Protocol
+For every query, name its facet IDs, concrete gap, expected evidence, and why it differs from prior queries. Include a meaningful counterevidence query in the opening batch where possible. Do not manufacture variants for a count. Citation-neighborhood is conditional on a central scholarly source and available links; news and documentation research do not require it. A provider without citation links is not a coverage failure.
 
-**Step 0: Get the current date**
+If literal results suggest a vocabulary mismatch, write a two- or three-sentence *hypothetical* answer solely to extract at most five candidate terms. Use at most two separate expanded queries and keep the literal query in the batch. Treat every generated entity, number, and date as unverified until a real source confirms it. Discard fabricated or off-topic terms. The hypothetical text is never a source, evidence entry, citation, or basis for a finding. This is a guarded vocabulary probe, not HyDE.
 
-Before ANY searches, retrieve today's date using Bash: `date +%Y-%m-%d`
-Use the returned year for all date-filtered queries and recency checks. Do NOT assume a year from training data.
+**Step 2: Execute the batch.** Use `search-cli` first (`search "query" --json -c 10`, with an appropriate mode such as `academic` or `news`); use WebSearch if it fails, is rate-limited, or a domain restriction is needed. Exa MCP is optional when configured. Use the correct parameters for each provider. Run independent queries concurrently where tools permit. Use extraction/fetch tools to read promising sources. Delegate focused deep dives only when the environment and task permit it; require source URLs, exact passages, and locators from any delegate.
 
-**Step 1: Launch ALL searches concurrently (single message)**
+**Step 3: Screen, persist, and update.** For each query, screen candidates as relevant, possibly relevant, or irrelevant. Register relevant sources canonically before counting them; duplicate URLs, DOIs, and syndicated copies do not increase yield. Persist useful passages in `evidence.jsonl` with source IDs and locators before synthesis. Fill `evidence.jsonl.retrieval_query` when known. Source diversity, recency, independence, geography, and credibility remain important checks, but a total or average score never closes a facet.
 
-**CRITICAL: Use correct tool and parameters to avoid errors**
+Append one `queries.jsonl` row per query with `query_id`, `round`, `facet_ids`, `gap`, `family`, `query`, `provider`, `expected_evidence`, `result_source_ids`, `new_relevant_source_ids`, `coverage_changed`, and `notes`. The query log records provenance, not evidence. Update each facet's `query_ids`, direct `evidence_ids`, `status` (`unsearched`, `searched`, `supported`, `contested`, or `unresolved`), `counterevidence` (`unchecked`, `searched-none-found`, `found`, or `not-applicable` with a reason), and `gap_note`. `supported` needs direct evidence. For `contested`, record at least two material positions with direct evidence IDs for each side and explain the conflict. Mark `unresolved` when attempts fail to establish an answer. Keep the three-independent-source standard for major claims separate from this facet status.
 
-**Primary: search-cli (multi-provider, always use first)**
-- Unified CLI aggregating Brave, Serper, Exa, Jina, and Firecrawl
-- Auto-detects best provider per query type (academic, news, general, people)
-- JSON output for structured processing: `search "query" --json`
-- Modes: general, news, academic, scholar, patents, people, images, extract, scrape
-- Example: `search "quantum computing 2025" -m academic --json -c 15`
-- For page content extraction: `search "URL" -m extract --json`
-- For scraping: `search "URL" -m scrape --json`
-- Run via Bash tool: `search "query" --json -c 10`
+After all queries in a batch are screened and coverage is updated, append a `completed_rounds` summary with `round`, `query_ids`, `families`, `target_high_priority_facet_ids`, `new_relevant_source_ids`, `material_changes`, and `coverage_ready_after`. Material changes include facet status, counterevidence state, contested position, priority, a new essential facet, or scope change; record `facet_id`, `kind`, `before`, and `after`. A round with a material change is not low yield even if it found no new source.
 
-**Fallback: WebSearch (if search-cli fails or is unavailable)**
-- Built-in Claude web search, no setup required
-- Parameters: `query` (required), optional `allowed_domains`, `blocked_domains`
-- Use when: search-cli returns errors, rate-limited, or for domain-restricted queries
+**Step 4: Choose the next gap.** Follow the highest-priority concrete gap: an unsearched facet, weakly evidenced claim, material contradiction, missing counterargument or source type, or new in-scope entity or limitation. Log what novel evidence the next query could find. If a query yields nothing, log zero yield and try a different family or provider within budget. Do not treat search-result snippets or generated text as evidence. Recheck that follow-ups still serve the original question.
 
-**Optional: Exa MCP (if configured, for semantic/neural search)**
-- Tool name: `mcp__Exa__exa_search`
-- Use for semantic exploration alongside search-cli keyword results
+### Retrieval stop decision
 
+Check at the end of each completed round:
 
-**NEVER mix parameter styles** - this causes "Invalid tool parameters" errors.
+- `coverage_ready` is true only when every active high-priority facet has been searched and has direct evidence; each has a completed counterevidence search or a documented reason it does not apply; and every contested facet has direct evidence for both material positions plus an explained conflict. A demoted or inactive initial high-priority facet needs its recorded scope-change justification before exclusion. Claim verification still applies before report delivery.
+- `low_yield_round` is true only when a completed round adds zero new relevant canonical sources to high-priority facets and records no material changes. Duplicate results do not increase yield.
 
-**Step 2: Spawn parallel deep-dive agents**
+When readiness first becomes true, begin the saturation sequence. Seek two *subsequent* low-yield residual probe rounds in distinct query families, aimed at the weakest-supported high-priority facet, a plausible counterexample, a missing source type, or adjacent terminology. Target high-priority facets even if no explicit gap remains. A single round with two families is still one round. Only rounds completed after readiness count; they must together address remaining high-priority gaps. Any new relevant canonical source or material facet change resets the low-yield count. If the change opens a high-priority gap, restore readiness before restarting residual probes. Stop as `coverage-saturated` only when readiness still holds and the last two post-readiness rounds are both low yield, use distinct families across the rounds, and are persisted and validated. This is an operational heuristic, not a guarantee of web recall.
 
-Use Task tool with general-purpose agents (3-5 agents) for:
-- Academic paper analysis (PDFs, detailed extraction)
-- Documentation deep dives (technical specs, API docs)
-- Repository analysis (code examples, implementations)
-- Specialized domain research (requires multi-step investigation)
+Continue targeted search while the mode's time or tool budget permits. At the budget limit, stop as `budget-exhausted` and list every high-priority facet that fails coverage readiness (including one with evidence but unchecked counterevidence), plus each remaining gap, even if there are many credible sources. A truly critical tool or data error uses `critical-error` and the existing error path. Record the same decision in `coverage.json.stop` and `run_manifest.json.retrieval_stop`: `reason`, `at`, `round`, `unresolved_high_priority_facet_ids`, `remaining_gaps`, and `basis`. Do not run background searches after a stop unless retrieval is reopened and their results are incorporated. Source totals and credibility are depth diagnostics, never automatic stop gates. For sparse domains, deliver a qualified partial answer with the budget stop and open gaps.
 
-**Sub-agent output format:** Require all sub-agents to return structured evidence, not free text:
-```json
-{"claim": "specific claim text", "evidence_quote": "exact quote from source", "source_url": "https://...", "source_title": "...", "confidence": 0.85}
-```
-This prevents synthesis fatigue when merging results from 3-5 agents.
+**Source quality:** Seek primary material, multiple independent source clusters for major claims, relevant source types, recent and foundational sources, opposing perspectives, and geographic diversity where the topic warrants them. Score credibility with `source_evaluator.py`; verify low-scoring sources before relying on them. These checks guide follow-ups and claim verification, not the stop decision by themselves.
 
-**Evidence persistence (v3.0):** After each retrieval batch, persist evidence immediately:
-```bash
-# Register the source first (returns stable source_id)
-python scripts/citation_manager.py register-source --json '{"raw_url": "...", "title": "..."}' --dir [folder]
-
-# Then persist each evidence span from that source
-python scripts/evidence_store.py add --json '{"source_id": "...", "quote": "exact text", "evidence_type": "direct_quote", "locator": "page 5"}' --dir [folder]
-```
-Evidence must not live only in model context — it must be persisted to `evidence.jsonl` before synthesis begins. This ensures continuation agents and claim-support verification can access the full evidence trail.
-
-**Example parallel execution (using search-cli via Bash):**
-```
-[Single message with multiple Bash tool calls]
-- Bash: search "quantum computing 2026 state of the art" --json -c 10
-- Bash: search "quantum computing limitations challenges" --json -c 10
-- Bash: search "quantum computing commercial applications 2026" -m news --json -c 10
-- Bash: search "quantum computing vs classical comparison" --json -c 10
-- Bash: search "quantum error correction research" -m academic --json -c 10
-- Task(subagent_type="general-purpose", description="Analyze quantum computing papers", prompt="Deep dive into quantum computing academic papers from [CURRENT_YEAR], extract key findings and methodologies")
-- Task(subagent_type="general-purpose", description="Industry analysis", prompt="Analyze quantum computing industry reports and market data, identify commercial applications")
-- Task(subagent_type="general-purpose", description="Technical challenges", prompt="Extract technical limitations and challenges from quantum computing research")
-```
-
-**Example parallel execution (using Exa MCP - if available):**
-```
-[Single message with multiple tool calls]
-- mcp__Exa__exa_search(query="quantum computing state of the art", type="neural", num_results=10, start_published_date="[use current year from Step 0]")
-- mcp__Exa__exa_search(query="quantum computing limitations", type="keyword", num_results=10)
-- mcp__Exa__exa_search(query="quantum computing commercial", type="auto", num_results=10, start_published_date="[use current year from Step 0]")
-- mcp__Exa__exa_search(query="quantum error correction", type="neural", num_results=10, include_domains=["arxiv.org"])
-- Task(subagent_type="general-purpose", description="Academic analysis", prompt="Analyze quantum computing academic papers")
-```
-
-**Step 3: Collect and organize results**
-
-As results arrive:
-1. Extract key passages with source metadata (title, URL, date, credibility)
-2. Track information gaps that emerge
-3. Follow promising tangents with additional targeted searches
-4. Maintain source diversity (mix academic, industry, news, technical docs)
-5. Monitor for quality threshold (see FFS pattern below)
-
-### First Finish Search (FFS) Pattern
-
-**Adaptive completion based on quality threshold:**
-
-**Quality gate:** Proceed to Phase 4 when FIRST threshold reached:
-- **Quick mode:** 10+ sources with avg credibility >60/100 OR 2 minutes elapsed
-- **Standard mode:** 15+ sources with avg credibility >60/100 OR 5 minutes elapsed
-- **Deep mode:** 25+ sources with avg credibility >70/100 OR 10 minutes elapsed
-- **UltraDeep mode:** 30+ sources with avg credibility >75/100 OR 15 minutes elapsed
-
-**Continue background searches:**
-- If threshold reached early, continue remaining parallel searches in background
-- Additional sources used in Phase 5 (SYNTHESIZE) for depth and diversity
-- Allows fast progression without sacrificing thoroughness
-
-### Quality Standards
-
-**Source diversity requirements:**
-- Minimum 3 source types (academic, industry, news, technical docs)
-- Temporal diversity (mix of recent 12-18 months + foundational older sources)
-- Perspective diversity (proponents + critics + neutral analysis)
-- Geographic diversity (not just US sources)
-
-**Credibility tracking:**
-- Score each source 0-100 using source_evaluator.py
-- Flag low-credibility sources (<40) for additional verification
-- Prioritize high-credibility sources (>80) for core claims
-
-**Techniques:**
-- Use search-cli for all searches (primary tool, multi-provider)
-- Fall back to WebSearch if search-cli fails or is rate-limited
-- Use WebFetch for deep dives into specific sources (secondary)
-- Use Exa search (via WebSearch with type="neural") for semantic exploration
-- Use Grep/Read for local documentation
-- Execute code for computational analysis (when needed)
-- Use Task tool to spawn parallel retrieval agents (3-5 agents)
-
-**Output:** Organized information repository with source tracking, credibility scores, and coverage map
+**Output:** Canonical source and evidence stores, `queries.jsonl` provenance, current `coverage.json`, and a documented retrieval stop decision.
 
 ---
 
@@ -272,11 +180,7 @@ As results arrive:
 
 4. **Targeted Gap Filling (if major gaps found)**
 
-   If outline refinement reveals critical knowledge gaps:
-   - Launch 2-3 targeted searches for newly identified angles
-   - Quick retrieval only (don't restart full Phase 3)
-   - Time-box to 2-5 minutes
-   - Update triangulation for new evidence only
+   If outline refinement reveals critical knowledge gaps, update `coverage.json` and reopen retrieval. Log targeted `delta` queries in `queries.jsonl`, screen and persist results, update triangulation, and complete the same readiness and stop checks within the remaining mode budget. Record a fresh stop decision. Do not run an untracked side search or retain an earlier saturation decision after reopening.
 
 5. **Document Adaptation Rationale**
 
@@ -347,7 +251,7 @@ Simulate 2-3 specific critic personas relevant to the topic:
 - "Implementation Engineer" — Can these recommendations actually be executed?
 
 **Critical Gap Loop-Back:**
-If critique identifies a critical knowledge gap (not just a writing issue), return to Phase 3 with targeted "delta-queries" before proceeding to Phase 7. Time-box to 3-5 minutes. This prevents publishing reports with known blind spots.
+If critique identifies a critical knowledge gap or a new essential in-scope facet (rather than only a writing issue), reopen Phase 3. Update `coverage.json`, run targeted `delta` queries within the remaining budget, append them to `queries.jsonl`, and record a new stop decision after screening and ledger updates. If the budget runs out, preserve the unresolved gap in the report. A prior `coverage-saturated` decision does not survive newly discovered contrary evidence or a new high-priority facet.
 
 **Output:** Critique report with improvement recommendations
 
@@ -364,6 +268,8 @@ If critique identifies a critical knowledge gap (not just a writing issue), retu
 4. Resolve contradictions
 5. Enhance clarity
 6. Verify revised content
+
+Any additional research here follows the Phase 3 ledger, query provenance, and stop rules. Report the final stop reason and unresolved high-priority gaps in both the Methodology Appendix and Limitations.
 
 **Output:** Strengthened research with addressed deficiencies
 

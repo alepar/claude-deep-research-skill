@@ -9,7 +9,7 @@ description: Use when the user needs multi-source research with citation trackin
 
 Deliver citation-tracked research reports through a structured pipeline with evidence persistence, source identity management, claim-level verification, and progressive context management.
 
-**Autonomy Principle:** Operate independently. Infer assumptions from context. Only stop for critical errors or incomprehensible queries. Surface high-materiality assumptions explicitly in the Introduction and Methodology rather than silently defaulting.
+**Autonomy Principle:** Operate independently. Infer assumptions from context. Interrupt the user only for critical errors or incomprehensible queries; end retrieval under the documented coverage or budget stop rules. Surface high-materiality assumptions explicitly in the Introduction and Methodology rather than silently defaulting.
 
 ---
 
@@ -47,6 +47,8 @@ Mode Selection
 | 8 | PACKAGE | Y | Y | Y | Y |
 
 **Note:** Phases 3-5 operate as an evidence loop per section (retrieve → evidence store → refine outline → draft → verify claims → delta-retrieve if needed), not as strict sequential gates.
+
+**Every mode, including Quick:** At scope, create a small `coverage.json` ledger with 3–8 answerable facets anchored to the user's question. Search distinct query families, log each query in `queries.jsonl`, and update coverage after each retrieval round. Quick skips the formal plan and triangulation phases, not coverage or an explicit stop decision. Source totals and credibility scores indicate depth; they never clear an open high-priority facet. See [methodology.md](./reference/methodology.md) for the readiness, residual-probe, budget, and critique-reopening rules.
 
 ---
 
@@ -88,14 +90,17 @@ Mode Selection
 - `sources.jsonl` — stable source registry with canonical IDs
 - `evidence.jsonl` — append-only evidence store with quotes and locators
 - `claims.jsonl` — atomic claim ledger with support status
-- `run_manifest.json` — query, mode, assumptions, provider config
+- `coverage.json` — latest facet coverage, completed rounds, and retrieval stop decision
+- `queries.jsonl` — append-only query provenance and screened yield
+- `run_manifest.json` — query, mode, assumptions, provider config, and final retrieval stop
 - HTML (McKinsey style, auto-opened)
 - PDF (professional print, auto-opened)
 
 **Quality standards:**
-- 10+ sources, 3+ per major claim (cluster-independent, not just count)
+- 10+ sources is a depth diagnostic, not an automatic retrieval stop or substitute for facet coverage; major claims require 3+ independent supporting sources
 - All factual claims cited immediately [N] with evidence backing in `evidence.jsonl`
 - Claim-support verification mandatory: no unsupported factual claims pass delivery
+- Record the final retrieval stop reason and unresolved gaps in the Methodology Appendix and Limitations
 - No placeholders, no fabricated citations
 - Prose-first (>=80%), bullets sparingly
 
