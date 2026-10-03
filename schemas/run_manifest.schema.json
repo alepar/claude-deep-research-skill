@@ -112,7 +112,17 @@
       "type": "object",
       "description": "Optional delivered report package. Omit for older and compact runs.",
       "properties": {
-        "output_mode": { "enum": ["markdown", "html", "pdf"] },
+        "output_mode": {
+          "description": "Legacy primary-format field; new runs use markdown and list optional renders in requested_formats.",
+          "enum": ["markdown", "html", "pdf"]
+        },
+        "requested_formats": {
+          "type": "array",
+          "description": "Optional additional rendered deliverables; Markdown remains the canonical report.",
+          "items": { "enum": ["html", "pdf"] },
+          "uniqueItems": true,
+          "default": []
+        },
         "final_report_path": { "type": "string", "minLength": 1 },
         "dossiers": {
           "type": "array",
@@ -121,6 +131,7 @@
         }
       },
       "dependentRequired": {
+        "requested_formats": ["output_mode", "final_report_path", "dossiers"],
         "dossiers": ["output_mode", "final_report_path"],
         "final_report_path": ["output_mode", "dossiers"],
         "output_mode": ["final_report_path", "dossiers"]

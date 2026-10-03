@@ -56,4 +56,26 @@ Run at least one end-to-end fixture from registered sources through two dossiers
 
 ## Post-Implementation Notes
 
-To be filled after implementation with changed files, test results, deviations, and observed limitations.
+The implementation adds the optional `run_manifest.reporting` dossier index,
+`templates/dossier_template.md`, layered assembly and quality guidance,
+`scripts/validate_report_package.py`, and `scripts/continuation_state.py`.
+`SKILL.md`, the report template, methodology, HTML/PDF guidance, and the phase
+scaffold were aligned with the approved output and prompting choices. The
+[audit disposition](../../prompting-audits/2026-10-03-dispositions.md) maps
+F00–F72 individually.
+
+The final report path remains Markdown. The singular `output_mode` is retained
+for older manifests; new runs use `output_mode: markdown` and can record both
+optional renders in `requested_formats: [html, pdf]`. Rendering is a separate
+requested delivery step, with HTML/PDF checks outside the structural Markdown
+package validator. A Quick run can omit `reporting`.
+
+The integration fixture registers two sources, evidence records, claims, and
+high-priority facets; it tests coverage, claim support, Markdown surfaces, and
+cross-dossier final links and source citations. It also rejects a final claim
+that cites a dossier as an original source. Existing tests cover delegated and
+sequential continuation, fallback capacity, and the Quick compatibility path.
+The full suite passed 118 tests on 2026-10-03; Python compilation and
+`git diff --check` passed. Structural checks cannot prove prose entailment,
+source relevance, or an empirical recall gain. A matched evaluation remains
+future work.

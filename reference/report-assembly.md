@@ -55,8 +55,13 @@ methods and limits, open gaps, and its own bibliography. Use the
 Detailed passages belong here when useful.
 
 The lead owns `run_manifest.json` and all canonical ledgers. It adds the
-optional `reporting` object with `output_mode`, relative `final_report_path`,
-and dossier rows: stable `id`, relative Markdown `path`, `facet_ids`,
+optional `reporting` object with `output_mode: markdown`, relative Markdown
+`final_report_path`, and optional `requested_formats: [html, pdf]` when the
+user asks for rendered files. `output_mode` remains for older manifests; new
+runs keep Markdown as the primary artifact even when both renders are requested.
+The `requested_formats` array records intent, while HTML/PDF files and their
+links are checked separately under [HTML generation](html-generation.md).
+The reporting object also contains dossier rows: stable `id`, relative Markdown `path`, `facet_ids`,
 `source_ids`, `evidence_ids`, `claim_ids`, and `status` (`draft`, `complete`, or
 `partial`). A worker writes only its exclusive dossier path. Give each worker
 the assigned facets and canonical IDs, permitted inputs, a bounded task, and a
