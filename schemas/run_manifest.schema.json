@@ -131,6 +131,7 @@
         }
       },
       "dependentRequired": {
+        "requested_formats": ["output_mode", "final_report_path", "dossiers"],
         "dossiers": ["output_mode", "final_report_path"],
         "final_report_path": ["output_mode", "dossiers"],
         "output_mode": ["final_report_path", "dossiers"]

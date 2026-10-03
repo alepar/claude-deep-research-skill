@@ -132,6 +132,14 @@ class TestReportPackage(unittest.TestCase):
                 self.manifest['reporting']['requested_formats'] = formats
                 self.assert_invalid('requested_formats')
 
+    def test_requested_formats_alone_requires_a_report_package_in_schema_and_validator(self):
+        self.manifest['reporting'] = {'requested_formats': ['html']}
+        self.assert_invalid('output_mode')
+        schema = json.loads((ROOT / 'schemas/run_manifest.schema.json').read_text())
+        dependencies = schema['properties']['reporting']['dependentRequired']
+        self.assertEqual(set(dependencies['requested_formats']),
+                         {'output_mode', 'final_report_path', 'dossiers'})
+
     def test_duplicate_dossier_id_fails(self):
         self.manifest['reporting']['dossiers'][1]['id'] = 'dossier-alpha'
         self.assert_invalid('duplicate dossier ID')
