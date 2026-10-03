@@ -44,15 +44,17 @@ class TestVerifyCoverage(unittest.TestCase):
             'initial_facets': [{'id': 'F1', 'question': 'What works?', 'priority': 'high'}],
             'facets': [{'id': 'F1', 'question': 'What works?', 'priority': 'high',
                         'source_types': ['primary documentation'], 'status': 'supported',
-                        'active': True, 'query_ids': ['Q1', 'Q2', 'Q3'],
+                        'active': True, 'query_ids': ['Q0', 'Q1', 'Q2', 'Q3'],
                         'evidence_ids': [EVIDENCE], 'contested_positions': [],
                         'counterevidence': 'searched-none-found', 'gap_note': '',
                         'scope_change': None}],
             'completed_rounds': [
-                {'round': 1, 'query_ids': ['Q1'], 'families': ['literal'],
+                {'round': 1, 'query_ids': ['Q0', 'Q1'], 'families': ['literal', 'counterevidence'],
                  'target_high_priority_facet_ids': ['F1'], 'new_relevant_source_ids': [SOURCE],
                  'material_changes': [{'facet_id': 'F1', 'kind': 'status',
-                                       'before': 'unsearched', 'after': 'supported'}],
+                                       'before': 'unsearched', 'after': 'supported'},
+                                      {'facet_id': 'F1', 'kind': 'counterevidence',
+                                       'before': 'unchecked', 'after': 'searched-none-found'}],
                  'coverage_ready_after': True},
                 {'round': 2, 'query_ids': ['Q2'], 'families': ['synonym'],
                  'target_high_priority_facet_ids': ['F1'], 'new_relevant_source_ids': [],
@@ -63,6 +65,12 @@ class TestVerifyCoverage(unittest.TestCase):
             ], 'stop': self.stop,
         }
         self.queries = [
+            {'query_id': 'Q0', 'round': 1, 'facet_ids': ['F1'],
+             'gap': 'Look for counterexamples', 'family': 'counterevidence',
+             'query': 'approach failures', 'provider': 'search-cli',
+             'expected_evidence': 'Contrary cases', 'result_source_ids': [],
+             'new_relevant_source_ids': [], 'coverage_changed': True, 'notes': ''},
+        ] + [
             {'query_id': f'Q{i}', 'round': i, 'facet_ids': ['F1'], 'gap': 'Check evidence',
              'family': family, 'query': f'query {i}', 'provider': 'search-cli',
              'expected_evidence': 'Direct source', 'result_source_ids': results,
@@ -101,6 +109,33 @@ class TestVerifyCoverage(unittest.TestCase):
     def test_complete_loop_accepts_saturated_stop(self):
         code, result = self.check()
         self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_checked_counterevidence_needs_logged_search_and_transition(self):
+        self.coverage['completed_rounds'][0]['material_changes'] = [
+            self.coverage['completed_rounds'][0]['material_changes'][0]]
+        self.coverage['completed_rounds'][0]['query_ids'] = ['Q1']
+        self.coverage['completed_rounds'][0]['families'] = ['literal']
+        self.coverage['facets'][0]['query_ids'].remove('Q0')
+        self.queries = [q for q in self.queries if q['query_id'] != 'Q0']
+        self.assert_invalid('counterevidence')
+
+    def test_literal_query_can_record_counterevidence_transition(self):
+        self.queries[0]['family'] = 'literal'
+        self.coverage['completed_rounds'][0]['families'] = ['literal']
+        code, result = self.check()
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_schema_required_facet_fields_are_checked(self):
+        for key in ('source_types', 'scope_change'):
+            with self.subTest(key=key):
+                saved = self.coverage['facets'][0].pop(key)
+                self.assert_invalid(key)
+                self.coverage['facets'][0][key] = saved
+
+    def test_schema_required_query_fields_are_checked(self):
+        saved = self.queries[0].pop('notes')
+        self.assert_invalid('notes')
+        self.queries[0]['notes'] = saved
 
     def test_saturation_requires_initial_facet_snapshot(self):
         self.coverage['initial_facets'] = []
@@ -156,7 +191,7 @@ class TestVerifyCoverage(unittest.TestCase):
     def coverage_base_facet(self):
         return {'id': 'F1', 'question': 'What works?', 'priority': 'high',
                 'source_types': ['primary documentation'], 'status': 'supported',
-                'active': True, 'query_ids': ['Q1', 'Q2', 'Q3'],
+                'active': True, 'query_ids': ['Q0', 'Q1', 'Q2', 'Q3'],
                 'evidence_ids': [EVIDENCE], 'contested_positions': [],
                 'counterevidence': 'searched-none-found', 'gap_note': '',
                 'scope_change': None}
@@ -212,8 +247,12 @@ class TestVerifyCoverage(unittest.TestCase):
         self.manifest['retrieval_stop'] = copy.deepcopy(self.stop)
         self.coverage['completed_rounds'] = self.coverage['completed_rounds'][:1]
         self.coverage['completed_rounds'][0]['material_changes'][0]['after'] = 'unresolved'
+        self.coverage['completed_rounds'][0]['material_changes'] = [
+            self.coverage['completed_rounds'][0]['material_changes'][0]]
+        self.coverage['completed_rounds'][0]['query_ids'] = ['Q1']
+        self.coverage['completed_rounds'][0]['families'] = ['literal']
         self.coverage['completed_rounds'][0]['coverage_ready_after'] = False
-        self.queries = self.queries[:1]
+        self.queries = [self.queries[1]]
         self.coverage['facets'][0].update(query_ids=['Q1'], status='unresolved',
                                           evidence_ids=[], counterevidence='unchecked',
                                           gap_note='No direct evidence')

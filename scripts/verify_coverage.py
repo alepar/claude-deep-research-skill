@@ -109,6 +109,9 @@ def verify(directory):
         return {'status': 'invalid', 'errors': [f'artifact read: {exc}']}
     if not isinstance(coverage, dict) or coverage.get('schema_version') != 1:
         return {'status': 'invalid', 'errors': ['coverage schema_version must be 1']}
+    for field in ('question', 'initial_facets', 'facets', 'completed_rounds', 'stop'):
+        if field not in coverage:
+            errors.append(f'coverage missing {field}')
     if coverage.get('question') != manifest.get('query'):
         errors.append('coverage question differs from manifest query')
 
@@ -134,6 +137,8 @@ def verify(directory):
     facets = unique_ids(facets_list, 'id', 'facet', errors)
     initials = unique_ids(initial_list, 'id', 'initial facet', errors)
     for initial_id, initial in initials.items():
+        if not nonempty(initial.get('question')) or initial.get('priority') not in {'high', 'supporting'}:
+            errors.append(f'initial facet {initial_id} invalid question or priority')
         current = facets.get(initial_id)
         if current is None:
             errors.append(f'initial facet {initial_id} missing from facets')
@@ -155,6 +160,17 @@ def verify(directory):
                 check_references(change['supporting_evidence_ids'], evidence,
                                  f'initial facet {initial_id} scope_change evidence', errors)
     for fid, facet in facets.items():
+        for field in ('source_types', 'status', 'active', 'query_ids', 'evidence_ids',
+                      'contested_positions', 'counterevidence', 'gap_note', 'scope_change'):
+            if field not in facet:
+                errors.append(f'facet {fid} missing {field}')
+        if not isinstance(facet.get('source_types'), list) or any(
+                not isinstance(item, str) for item in facet.get('source_types', [])):
+            errors.append(f'facet {fid} source_types must be an array of strings')
+        if not isinstance(facet.get('gap_note'), str):
+            errors.append(f'facet {fid} gap_note must be a string')
+        if facet.get('scope_change') is not None and not isinstance(facet.get('scope_change'), dict):
+            errors.append(f'facet {fid} scope_change must be an object or null')
         if not nonempty(facet.get('question')) or facet.get('priority') not in {'high', 'supporting'}:
             errors.append(f'facet {fid} invalid question or priority')
         if facet.get('status') not in STATUSES or facet.get('counterevidence') not in COUNTER:
@@ -186,6 +202,13 @@ def verify(directory):
     seen_new = set()
     final_changes = {}
     for qid, query in query_by_id.items():
+        for field in ('round', 'facet_ids', 'gap', 'family', 'query', 'provider',
+                      'expected_evidence', 'result_source_ids', 'new_relevant_source_ids',
+                      'coverage_changed', 'notes'):
+            if field not in query:
+                errors.append(f'query {qid} missing {field}')
+        if not isinstance(query.get('notes'), str):
+            errors.append(f'query {qid} notes must be a string')
         round_number = query.get('round')
         if type(round_number) is not int or round_number < 1:
             errors.append(f'query {qid} invalid round')
@@ -210,6 +233,10 @@ def verify(directory):
     if set(by_round) != set(range(1, len(rounds) + 1)):
         errors.append('completed_rounds must cover every consecutive query round')
     for index, round_row in enumerate(rounds, 1):
+        for field in ('round', 'query_ids', 'families', 'target_high_priority_facet_ids',
+                      'new_relevant_source_ids', 'material_changes', 'coverage_ready_after'):
+            if field not in round_row:
+                errors.append(f'round {index} missing {field}')
         if round_row.get('round') != index:
             errors.append(f'completed_rounds nonconsecutive round {index}')
         logged = by_round.get(index, [])
@@ -255,6 +282,26 @@ def verify(directory):
                  'priority': 'priority', 'scope_change': 'scope_change'}.get(kind)
         if field and facets[fid].get(field) != after:
             errors.append(f'material_changes final {kind} for {fid} disagrees with current facet')
+
+    checked_counter = {(change.get('facet_id'), change.get('after')) for round_row in rounds
+                       for change in round_row.get('material_changes', [])
+                       if isinstance(change, dict) and change.get('kind') == 'counterevidence'}
+    for fid, facet in facets.items():
+        state = facet.get('counterevidence')
+        if not facet.get('active') or facet.get('priority') != 'high' or \
+                state not in {'found', 'searched-none-found'}:
+            continue
+        if (fid, state) not in checked_counter:
+            errors.append(f'facet {fid} checked counterevidence lacks material transition')
+            continue
+        if not any(any(change.get('facet_id') == fid and
+                       change.get('kind') == 'counterevidence' and change.get('after') == state
+                       for change in round_row.get('material_changes', [])) and
+                   any(fid in q.get('facet_ids', []) and
+                       q.get('coverage_changed') is True
+                       for q in by_round.get(round_row.get('round'), []))
+                   for round_row in rounds):
+            errors.append(f'facet {fid} checked counterevidence lacks supporting query provenance')
 
     stop = coverage.get('stop')
     if stop != manifest.get('retrieval_stop'):
