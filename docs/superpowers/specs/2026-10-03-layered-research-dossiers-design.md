@@ -8,7 +8,7 @@ Let a reader start with a decision-sized final research report and open detailed
 
 The skill now persists canonical `sources.jsonl`, `evidence.jsonl`, `claims.jsonl`, `queries.jsonl`, `coverage.json`, and a run manifest. Retrieval is organized around answerable facets, and a stop decision depends on their coverage. Report instructions still assume one long report, fixed word targets, and a separate recursive continuation protocol. The prompt audit found conflicting continuation thresholds, an incomplete continuation state, stale citation-number instructions, and duplicated output and validation rules.
 
-This design changes the report layer and its handoffs. It keeps the existing retrieval stop rule, source/evidence IDs, and claim-support model as the authority. Other prompt-audit cleanup, such as outdated tool names and prompted-thinking language outside this flow, is separate follow-up work. This design does not add a vector index, make dossier prose an evidentiary source, or promise an empirical recall improvement.
+This design changes the report layer and its handoffs. It keeps the existing retrieval stop rule, source/evidence IDs, and claim-support model as the authority. The current implementation run also resolves the prompting audit in `docs/prompting-audits/2026-10-03-opus-sol.json`, including outdated tool names, scripted reasoning, redundant instructions, and conflicting validation rules. Each of its 73 findings receives an explicit disposition. This design does not add a vector index, make dossier prose an evidentiary source, or promise an empirical recall improvement.
 
 ## Decisions
 
