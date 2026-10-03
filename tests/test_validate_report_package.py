@@ -192,6 +192,32 @@ class TestReportPackage(unittest.TestCase):
         code, result = self.run_check(delivery=True)
         self.assertEqual((code, result['status']), (0, 'ok'), result)
 
+    def test_nested_final_accepts_angle_link_with_title(self):
+        self.manifest['reporting']['final_report_path'] = 'reports/final.md'
+        self.final = self.final.replace(
+            '](dossiers/alpha.md)', '](<../dossiers/alpha.md> "Alpha details")')
+        self.final = self.final.replace('](dossiers/beta.md)', '](../dossiers/beta.md)')
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_nested_final_accepts_percent_encoded_dossier_path(self):
+        self.manifest['reporting']['final_report_path'] = 'reports/final.md'
+        self.manifest['reporting']['dossiers'][0]['path'] = 'dossiers/alpha notes.md'
+        self.final = self.final.replace(
+            '](dossiers/alpha.md)', '](../dossiers/alpha%20notes.md "Alpha details")')
+        self.final = self.final.replace('](dossiers/beta.md)', '](../dossiers/beta.md)')
+        (self.dir / 'dossiers').mkdir(exist_ok=True)
+        (self.dir / 'dossiers/alpha notes.md').write_text(self.alpha)
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_percent_encoded_parent_link_outside_package_is_rejected(self):
+        self.manifest['reporting']['final_report_path'] = 'reports/final.md'
+        self.final = self.final.replace(
+            '](dossiers/alpha.md)', '](<%2e%2e/%2e%2e/outside.md> "Outside")')
+        code, result = self.run_check(delivery=True)
+        self.assertIn('inside the package', '\n'.join(result['errors']))
+
     def test_nested_final_rejects_parent_link_outside_package(self):
         self.manifest['reporting']['final_report_path'] = 'reports/final.md'
         self.final = self.final.replace('](dossiers/alpha.md)', '](<../../outside.md>)')

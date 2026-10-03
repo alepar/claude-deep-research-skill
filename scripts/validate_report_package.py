@@ -8,12 +8,16 @@ import argparse
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
+
+try:
+    from .validate_report import MARKDOWN_LINK
+except ImportError:
+    from validate_report import MARKDOWN_LINK
 
 
 ANCHOR = re.compile(r'<!--\s*claim:\s*([^;\s]+);\s*evidence:\s*([^;\s]+);\s*source:\s*([^\s]+)\s*-->')
 FACET = re.compile(r'<!--\s*facet:\s*(.*?)\s*-->')
-LINK = re.compile(r'(?<!!)\[[^\]]+\]\(([^)]+)\)')
 ID = re.compile(r'^[0-9a-f]{16}$')
 
 
@@ -248,16 +252,14 @@ def verify(directory, delivery=False):
         for fid in active_high - found_facets:
             errors.append(f'final report omits active high-priority facet: {fid}')
         linked = set()
-        for raw in LINK.findall(final):
-            raw = raw.strip()
-            if raw.startswith('<') and raw.endswith('>'):
-                raw = raw[1:-1]
-            parsed = urlsplit(raw)
+        for match in MARKDOWN_LINK.finditer(final):
+            target = match.group(1) or match.group(2)
+            parsed = urlsplit(target)
             if parsed.scheme or parsed.netloc:
                 continue
-            target = parsed.path
-            if target.endswith('.md'):
-                link_path = resolved_path(final_path.parent, target, 'final report link',
+            target_path = unquote(parsed.path)
+            if target_path.endswith('.md'):
+                link_path = resolved_path(final_path.parent, target_path, 'final report link',
                                           errors, package_root=directory)
                 if link_path:
                     linked.add(link_path)
