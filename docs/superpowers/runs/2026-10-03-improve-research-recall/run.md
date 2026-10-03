@@ -1,7 +1,7 @@
 # super-auto run — 2026-10-03-improve-research-recall
 
 flags: planOneShot=false skipPlanRoast=false skipCodeRoast=false autonomous=true
-phase: report
+phase: finish
 
 idea: Implement the proposed recall improvements to the Claude deep-research skill: coverage-led query planning, evidence-driven follow-up search, and coverage-aware stopping. Use ordinary subagents as the user-authorized substitute for the absent Workflow tool.
 branch: super-auto/recall-retrieval
@@ -20,7 +20,7 @@ codeBuckets:
   parked: none
   stalled: false
   review: ready
-  sweep: SWEEP DEFERRED (caller-owned)
+  sweep: 0957ac6 — 68 passed, 0 failed, 0 errors, 0 skipped; failing: none; command: python3 -m unittest discover -s tests -p 'test_*.py' -q @ 0957ac6bbe309c29541065a5188c1368eec05047
   worktreesKept: none
   processSweep: stopped 0 · survived 0
 friction: 1 events
