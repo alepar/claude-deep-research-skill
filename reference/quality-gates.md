@@ -27,9 +27,9 @@ assembly reveals a critical in-scope gap.
 
 Run these checks on a new layered package:
 
-    python scripts/verify_coverage.py --dir [run_folder]
+    python scripts/verify_coverage.py --dir [run_folder] --require-stop
     python scripts/verify_claim_support.py verify --dir [run_folder] --strict
-    python scripts/validate_report_package.py --dir [run_folder]
+    python scripts/validate_report_package.py --dir [run_folder] --delivery
     python scripts/validate_report.py --report [final_report_path]
     python scripts/verify_citations.py --report [final_report_path]
 
@@ -40,9 +40,13 @@ markers, and local link targets. It accepts compact final reports and facet
 dossiers without requiring an eight-section outline, minimum source count, or
 word count. Citation numbers may skip values when the canonical source
 registry assigns display numbers; bibliography entries still need to match
-the citations used in that artifact. The package validator checks dossier
-facet and ID mappings, links, claim anchors, and final coverage against the
-canonical ledgers.
+the citations used in that artifact. The delivery package validator requires
+a complete `reporting` object and a persisted retrieval stop. Quick and
+compact Standard packages may declare an empty dossier list; their final
+report must still cover active high-priority facets and cite registered
+claims. Delivered dossiers may be complete or explicitly partial, but not
+draft. It checks dossier facet and ID mappings, links, claim anchors, and
+final coverage against the canonical ledgers.
 
 Use complete, individually numbered bibliography entries with original
 source titles and URLs. Do not replace entries with a range or placeholder.

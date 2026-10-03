@@ -136,7 +136,8 @@ class LayeredPackageEndToEnd(unittest.TestCase):
                               capture_output=True, text=True)
 
     def test_registered_sources_to_two_dossiers_and_final(self):
-        coverage = self.run_script('verify_coverage.py', '--dir', str(self.path))
+        coverage = self.run_script('verify_coverage.py', '--dir', str(self.path),
+                                   '--require-stop')
         self.assertEqual(coverage.returncode, 0, coverage.stdout + coverage.stderr)
         support = self.run_script('verify_claim_support.py', 'verify',
                                   '--dir', str(self.path), '--strict')
@@ -145,7 +146,8 @@ class LayeredPackageEndToEnd(unittest.TestCase):
             surface = self.run_script('validate_report.py', '--report',
                                       str(self.path / relative))
             self.assertEqual(surface.returncode, 0, relative + ': ' + surface.stdout)
-        package = self.run_script('validate_report_package.py', '--dir', str(self.path))
+        package = self.run_script('validate_report_package.py', '--dir',
+                                  str(self.path), '--delivery')
         self.assertEqual(package.returncode, 0, package.stdout + package.stderr)
 
     def test_final_synthesis_traces_to_both_original_sources(self):

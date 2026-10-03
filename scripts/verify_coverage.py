@@ -87,7 +87,7 @@ def facet_ready(facet, evidence):
     return True
 
 
-def verify(directory):
+def verify(directory, require_stop=False):
     errors = []
     try:
         manifest = load_json(os.path.join(directory, 'run_manifest.json'))
@@ -304,6 +304,8 @@ def verify(directory):
             errors.append(f'facet {fid} checked counterevidence lacks supporting query provenance')
 
     stop = coverage.get('stop')
+    if require_stop and stop is None:
+        errors.append('retrieval_stop required for delivery')
     if stop != manifest.get('retrieval_stop'):
         errors.append('coverage stop and manifest retrieval_stop differ')
     if stop is not None:
@@ -348,9 +350,11 @@ def verify(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dir', required=True, help='Research run directory')
+    parser.add_argument('--require-stop', action='store_true',
+                        help='Reject an unfinished run without a persisted retrieval stop')
     args = parser.parse_args()
     try:
-        result = verify(args.dir)
+        result = verify(args.dir, require_stop=args.require_stop)
     except (TypeError, AttributeError, KeyError, IndexError) as exc:
         result = {'status': 'invalid', 'errors': [f'malformed coverage structure: {exc}']}
     print(json.dumps(result, ensure_ascii=False))

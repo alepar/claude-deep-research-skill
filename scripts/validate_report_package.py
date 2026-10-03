@@ -8,12 +8,16 @@ import argparse
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
+
+try:
+    from .validate_report import MARKDOWN_LINK
+except ImportError:
+    from validate_report import MARKDOWN_LINK
 
 
 ANCHOR = re.compile(r'<!--\s*claim:\s*([^;\s]+);\s*evidence:\s*([^;\s]+);\s*source:\s*([^\s]+)\s*-->')
 FACET = re.compile(r'<!--\s*facet:\s*(.*?)\s*-->')
-LINK = re.compile(r'(?<!!)\[[^\]]+\]\(([^)]+)\)')
 ID = re.compile(r'^[0-9a-f]{16}$')
 
 
@@ -27,14 +31,15 @@ def load_jsonl(path):
         return [json.loads(line) for line in handle if line.strip()]
 
 
-def resolved_path(directory, raw, label, errors):
+def resolved_path(directory, raw, label, errors, package_root=None):
     """Return a package-local Markdown path, rejecting traversal and symlinks out."""
+    root = Path(package_root or directory).resolve()
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or \
-            '..' in Path(raw).parts or Path(raw).suffix.lower() != '.md':
+            Path(raw).suffix.lower() != '.md':
         errors.append(f'{label} must be a relative path to a Markdown file')
         return None
     path = (directory / raw).resolve()
-    if not path.is_relative_to(directory.resolve()):
+    if not path.is_relative_to(root):
         errors.append(f'{label} must be a relative path inside the package')
         return None
     if not path.is_file():
@@ -156,7 +161,7 @@ def check_bibliography(markdown, sources, errors, label='final report'):
                 errors.append(f'{label} missing bibliography entry: [{number}]')
 
 
-def verify(directory):
+def verify(directory, delivery=False):
     directory = Path(directory)
     errors = []
     try:
@@ -164,7 +169,9 @@ def verify(directory):
     except (OSError, ValueError) as exc:
         return {'status': 'invalid', 'errors': [f'run_manifest.json: {exc}']}
     reporting = manifest.get('reporting')
-    if not reporting:
+    if reporting is None and 'reporting' not in manifest:
+        if delivery:
+            return {'status': 'invalid', 'errors': ['delivery requires reporting package']}
         return {'status': 'ok', 'errors': []}
     if not isinstance(reporting, dict):
         return {'status': 'invalid', 'errors': ['reporting must be an object']}
@@ -176,6 +183,9 @@ def verify(directory):
                 for value in requested_formats) or
             len(requested_formats) != len(set(requested_formats))):
         errors.append('reporting requested_formats must be a unique array of html/pdf')
+    for field in ('final_report_path', 'dossiers'):
+        if field not in reporting:
+            errors.append(f'reporting missing {field}')
     paths = manifest.get('artifact_paths', {})
     try:
         coverage = load_json(directory / paths.get('coverage', 'coverage.json'))
@@ -189,6 +199,10 @@ def verify(directory):
     except (OSError, ValueError) as exc:
         return {'status': 'invalid', 'errors': [f'canonical artifact read: {exc}']}
     facets = unique_index(coverage.get('facets', []), 'id', 'facet', errors)
+    if delivery:
+        stop = manifest.get('retrieval_stop')
+        if not isinstance(stop, dict) or not stop.get('reason') or stop != coverage.get('stop'):
+            errors.append('delivery requires matching persisted retrieval_stop in manifest and coverage')
     active_high = {fid for fid, facet in facets.items()
                    if facet.get('active') and facet.get('priority') == 'high'}
     final_path = resolved_path(directory, reporting.get('final_report_path'),
@@ -210,6 +224,8 @@ def verify(directory):
         claim_ids = check_ids(dossier.get('claim_ids'), claims, label, 'claim', errors)
         if dossier.get('status') not in {'draft', 'complete', 'partial'}:
             errors.append(f'{label} has invalid status')
+        elif delivery and dossier.get('status') == 'draft':
+            errors.append(f'{label} is draft and cannot be delivered')
         for eid in evidence_ids:
             if eid in evidence and evidence[eid].get('source_id') not in source_ids:
                 errors.append(f'{label} evidence {eid} source missing from dossier')
@@ -226,8 +242,9 @@ def verify(directory):
                           declared={'claim': set(claim_ids), 'evidence': set(evidence_ids),
                                     'source': set(source_ids)})
             check_bibliography(dossier_text, sources, errors, label)
-    for fid in active_high - covered:
-        errors.append(f'active high-priority facet {fid} has no dossier')
+    if dossiers or manifest.get('mode') not in {'quick', 'standard'}:
+        for fid in active_high - covered:
+            errors.append(f'active high-priority facet {fid} has no dossier')
     if final_path:
         final = final_path.read_text(encoding='utf-8')
         check_bibliography(final, sources, errors)
@@ -235,13 +252,15 @@ def verify(directory):
         for fid in active_high - found_facets:
             errors.append(f'final report omits active high-priority facet: {fid}')
         linked = set()
-        for raw in LINK.findall(final):
-            parsed = urlsplit(raw)
+        for match in MARKDOWN_LINK.finditer(final):
+            target = match.group(1) or match.group(2)
+            parsed = urlsplit(target)
             if parsed.scheme or parsed.netloc:
                 continue
-            target = raw.split('#', 1)[0].split('?', 1)[0]
-            if target.endswith('.md'):
-                link_path = resolved_path(final_path.parent, target, 'final report link', errors)
+            target_path = unquote(parsed.path)
+            if target_path.endswith('.md'):
+                link_path = resolved_path(final_path.parent, target_path, 'final report link',
+                                          errors, package_root=directory)
                 if link_path:
                     linked.add(link_path)
         for did, dossier in dossiers.items():
@@ -250,7 +269,10 @@ def verify(directory):
                 errors.append(f'final report missing link to dossier {did}')
         final_claims = {cid for cid, claim in claims.items()
                         if str(claim.get('section_id', '')).startswith('final:')
-                        and claim.get('claim_type') == 'factual'}
+                        and (claim.get('claim_type') == 'factual' or
+                             (claim.get('claim_type') == 'synthesis' and
+                              claim.get('support_status') == 'supported' and
+                              (claim.get('evidence_ids') or claim.get('cited_source_ids'))))}
         check_anchors(final, 'final report', final_claims,
                       claims, evidence, sources, display_numbers, errors)
     return {'status': 'invalid' if errors else 'ok', 'errors': errors}
@@ -259,8 +281,10 @@ def verify(directory):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dir', required=True, help='Research run directory')
+    parser.add_argument('--delivery', action='store_true',
+                        help='Require a complete delivered package and persisted retrieval stop')
     args = parser.parse_args()
-    result = verify(args.dir)
+    result = verify(args.dir, delivery=args.delivery)
     print(json.dumps(result, indent=2))
     raise SystemExit(0 if result['status'] == 'ok' else 1)
 
