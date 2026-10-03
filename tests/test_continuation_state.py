@@ -31,6 +31,117 @@ class ContinuationStateTests(unittest.TestCase):
         }
         (self.run_dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
 
+    def ready_progress(self):
+        self.manifest['reporting']['dossiers'][1]['status'] = 'complete'
+        (self.run_dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
+        return {
+            'completed_sections': ['final:synthesis'], 'open_gaps': [],
+            'next_task': None, 'words_generated': 1200,
+            'required_worker_ids': ['worker-a'],
+            'worker_returns': [{'worker_id': 'worker-a', 'status': 'complete',
+                                'joined': True}],
+            'final_validation': {name: 'passed' for name in
+                                 continuation_state.REQUIRED_VALIDATION_CHECKS},
+            'delivery_status': 'complete',
+        }
+
+    def test_null_next_task_waits_for_required_join(self):
+        progress = self.ready_progress()
+        progress['worker_returns'][0]['joined'] = False
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        decision = continuation_state.select_action(state)
+        self.assertEqual(decision['action'], 'blocked')
+        self.assertIn('worker-a', decision['blockers'][0])
+
+    def test_null_next_task_requires_validation_and_rejects_failed_check(self):
+        progress = self.ready_progress()
+        progress['final_validation']['package'] = 'unrun'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'validate')
+        progress['final_validation']['package'] = 'failed'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        decision = continuation_state.select_action(state)
+        self.assertEqual(decision['action'], 'blocked')
+        self.assertIn('package', decision['blockers'][0])
+
+    def test_null_next_task_rejects_draft_dossier_and_open_gap(self):
+        progress = self.ready_progress()
+        self.manifest['reporting']['dossiers'][1]['status'] = 'draft'
+        (self.run_dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        self.manifest['reporting']['dossiers'][1]['status'] = 'complete'
+        (self.run_dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
+        progress['open_gaps'] = [{'facet_id': 'facet-b', 'question': 'unknown'}]
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+
+    def test_partial_dossier_requires_qualified_partial_and_explicit_gap(self):
+        progress = self.ready_progress()
+        self.manifest['reporting']['dossiers'][1]['status'] = 'partial'
+        (self.run_dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        progress['delivery_status'] = 'partial'
+        progress['retrieval_stop_reason'] = 'budget-exhausted'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        progress['open_gaps'] = [{'facet_id': 'facet-a', 'question': 'Unrelated gap'}]
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+        progress['open_gaps'] = [{'facet_id': 'facet-b', 'question': 'Unknown outcome'}]
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'partial')
+
+    def test_complete_and_truthful_budget_partial_are_distinct(self):
+        progress = self.ready_progress()
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'complete')
+        progress['open_gaps'] = [{'facet_id': 'facet-b', 'question': 'unknown'}]
+        progress['delivery_status'] = 'partial'
+        progress['retrieval_stop_reason'] = 'budget-exhausted'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'partial')
+
+    def test_resume_when_final_checks_pending(self):
+        progress = self.ready_progress()
+        progress['final_validation']['package'] = 'unrun'
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        resumed = continuation_state.begin_new_stretch(self.run_dir)
+        self.assertEqual(resumed['words_generated'], 0)
+        self.assertEqual(resumed['final_validation']['package'], 'unrun')
+        self.assertEqual(continuation_state.select_action(resumed)['action'], 'validate')
+
+    def test_repeated_resume_during_validation_does_not_append_empty_stretch(self):
+        progress = self.ready_progress()
+        progress['final_validation']['package'] = 'unrun'
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        first = continuation_state.begin_new_stretch(self.run_dir)
+        second = continuation_state.begin_new_stretch(self.run_dir)
+        self.assertEqual(second, first)
+        self.assertEqual(len(second['completed_stretches']), 1)
+        self.assertEqual(continuation_state.select_action(second)['action'], 'validate')
+
+    def test_later_checkpoint_cannot_silently_drop_required_worker_ids(self):
+        progress = self.ready_progress()
+        progress['worker_returns'] = []
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        progress.pop('required_worker_ids')
+        progress.pop('worker_returns')
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(state['required_worker_ids'], ['worker-a'])
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+
+    def test_explicit_empty_lists_cannot_drop_pending_worker_join(self):
+        progress = self.ready_progress()
+        progress['worker_returns'] = []
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        progress['required_worker_ids'] = []
+        progress['worker_returns'] = []
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(state['required_worker_ids'], ['worker-a'])
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+
     def test_checkpoint_preserves_canonical_artifacts_and_completed_dossier(self):
         progress = {'completed_sections': ['dossier-a:summary'],
                     'open_gaps': [{'facet_id': 'facet-b', 'question': 'Missing evidence?'}],

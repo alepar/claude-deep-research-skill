@@ -9,6 +9,10 @@ from pathlib import Path
 
 STATE_NAME = 'continuation_state.json'
 FALLBACK_WORDS = 18000
+REQUIRED_VALIDATION_CHECKS = (
+    'coverage_stop', 'claim_support', 'report_surface', 'dossier_surface',
+    'citation_identity', 'package', 'semantic_review',
+)
 
 
 def _read_json(path):
@@ -22,6 +26,22 @@ def _write_state(run_dir, state):
     temporary.write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n',
                          encoding='utf-8')
     os.replace(temporary, destination)
+
+
+def _merge_worker_returns(previous, current):
+    """Keep earlier returns unless a later checkpoint updates the same worker."""
+    merged = list(previous)
+    positions = {item.get('worker_id'): index for index, item in enumerate(merged)
+                 if isinstance(item, dict) and item.get('worker_id')}
+    for item in current:
+        worker_id = item.get('worker_id') if isinstance(item, dict) else None
+        if worker_id in positions:
+            merged[positions[worker_id]] = item
+        else:
+            if worker_id:
+                positions[worker_id] = len(merged)
+            merged.append(item)
+    return merged
 
 
 def save_checkpoint(run_dir, progress):
@@ -38,8 +58,18 @@ def save_checkpoint(run_dir, progress):
             not isinstance(progress['words_generated'], int) or \
             progress['words_generated'] < 0:
         raise ValueError('progress has invalid section, gap, task, or word fields')
+    if not isinstance(progress.get('required_worker_ids', []), list) or \
+            not isinstance(progress.get('worker_returns', []), list) or \
+            not isinstance(progress.get('final_validation', {}), dict):
+        raise ValueError('progress has invalid worker or validation fields')
     paths = manifest.get('artifact_paths', {})
     reporting = manifest.get('reporting') or {}
+    previous_path = run_dir / STATE_NAME
+    previous = load_checkpoint(run_dir) if previous_path.exists() else {}
+    required_worker_ids = list(dict.fromkeys(
+        previous.get('required_worker_ids', []) + progress.get('required_worker_ids', [])))
+    worker_returns = _merge_worker_returns(
+        previous.get('worker_returns', []), progress.get('worker_returns', []))
     artifacts = {'run_manifest': 'run_manifest.json'}
     for name, default in (('coverage', 'coverage.json'), ('queries', 'queries.jsonl'),
                           ('sources', 'sources.jsonl'), ('evidence', 'evidence.jsonl'),
@@ -57,11 +87,15 @@ def save_checkpoint(run_dir, progress):
         'open_gaps': progress['open_gaps'],
         'next_task': progress['next_task'],
         'words_generated': progress['words_generated'],
-        'worker_returns': progress.get('worker_returns', []),
+        'worker_returns': worker_returns,
+        'required_worker_ids': required_worker_ids,
+        'final_validation': progress.get('final_validation', {}),
+        'delivery_status': progress.get('delivery_status', 'complete'),
+        'retrieval_stop_reason': progress.get(
+            'retrieval_stop_reason', (manifest.get('retrieval_stop') or {}).get('reason')),
+        'requested_formats': reporting.get('requested_formats', []),
     }
-    previous = run_dir / STATE_NAME
-    state['completed_stretches'] = (load_checkpoint(run_dir).get('completed_stretches', [])
-                                    if previous.exists() else [])
+    state['completed_stretches'] = previous.get('completed_stretches', [])
     _write_state(run_dir, state)
     return state
 
@@ -74,8 +108,11 @@ def load_checkpoint(run_dir):
 def begin_new_stretch(run_dir):
     """Persist a fresh writer counter while retaining the prior stretch."""
     state = load_checkpoint(run_dir)
-    if state.get('next_task') is None:
+    if select_action(state)['action'] in ('complete', 'partial'):
         raise ValueError('cannot resume a completed report')
+    if state.get('words_generated', 0) <= 0 and \
+            select_action(state)['action'] == 'validate':
+        return state
     if state.get('words_generated', 0) <= 0:
         raise ValueError('current writer stretch has no words to preserve')
     state.setdefault('completed_stretches', []).append({
@@ -91,7 +128,60 @@ def select_action(state, available_words=None, estimated_next_words=None,
                   subagents_available=False):
     """Prefer capacity signals; use 18K words only when signals are unavailable."""
     if state.get('next_task') is None:
-        return {'action': 'complete', 'mechanism': None, 'basis': 'no-next-task'}
+        blockers = []
+        returns = state.get('worker_returns', [])
+        by_id = {item.get('worker_id'): item for item in returns
+                 if isinstance(item, dict) and item.get('worker_id')}
+        for worker_id in state.get('required_worker_ids', []):
+            result = by_id.get(worker_id)
+            if not result or result.get('status') not in ('complete', 'success') or \
+                    result.get('joined') is not True:
+                blockers.append('required worker not successfully joined: ' + str(worker_id))
+        for item in returns:
+            if isinstance(item, dict) and item.get('worker_id') not in \
+                    state.get('required_worker_ids', []) and \
+                    (item.get('status') not in ('complete', 'success') or
+                     item.get('joined') is not True):
+                blockers.append('worker return not joined: ' + str(item.get('worker_id')))
+        partial_dossiers = []
+        for dossier in state.get('dossiers', []):
+            if not isinstance(dossier, dict) or dossier.get('status') not in \
+                    ('complete', 'partial'):
+                blockers.append('incomplete dossier: ' + str(dossier.get('id') if
+                                                            isinstance(dossier, dict) else dossier))
+            elif dossier.get('status') == 'partial':
+                partial_dossiers.append(dossier)
+        checks = state.get('final_validation') or {}
+        required = list(REQUIRED_VALIDATION_CHECKS)
+        if not state.get('dossiers'):
+            required.remove('dossier_surface')
+        formats = state.get('requested_formats') or []
+        required.extend(name for name in ('html', 'pdf') if name in formats)
+        failed = [name for name in required if checks.get(name) == 'failed']
+        blockers.extend('failed final validation: ' + name for name in failed)
+        gaps = state.get('open_gaps') or []
+        partial = (state.get('delivery_status') == 'partial' and
+                   state.get('retrieval_stop_reason') == 'budget-exhausted' and bool(gaps))
+        if gaps and not partial:
+            blockers.append('open material gaps require a qualified budget-limited partial')
+        if state.get('delivery_status') == 'partial' and not partial:
+            blockers.append('partial delivery requires a budget limit and explicit open gap')
+        for dossier in partial_dossiers:
+            facet_ids = dossier.get('facet_ids') or []
+            has_dossier_gap = any(isinstance(gap, dict) and
+                                  gap.get('facet_id') in facet_ids for gap in gaps)
+            if not partial or not has_dossier_gap:
+                blockers.append('partial dossier requires qualified facet gap: ' +
+                                str(dossier.get('id')))
+        if blockers:
+            return {'action': 'blocked', 'mechanism': None,
+                    'basis': 'completion-gates', 'blockers': blockers}
+        unrun = [name for name in required if checks.get(name) != 'passed']
+        if unrun:
+            return {'action': 'validate', 'mechanism': None,
+                    'basis': 'completion-gates', 'checks': unrun}
+        return {'action': 'partial' if partial else 'complete',
+                'mechanism': None, 'basis': 'completion-gates'}
     if available_words is not None:
         if estimated_next_words is None:
             raise ValueError('estimated_next_words is required with available_words')
