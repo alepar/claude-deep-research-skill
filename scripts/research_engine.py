@@ -12,6 +12,7 @@ For the evidence substrate, see scripts/citation_manager.py and scripts/evidence
 
 import argparse
 import json
+import re
 import sys
 import time
 from datetime import datetime
@@ -132,6 +133,7 @@ class ResearchEngine:
                  output_dir: Optional[Path] = None):
         self.mode = mode
         self.state: Optional[ResearchState] = None
+        self._explicit_output_dir = output_dir is not None
         self.output_dir = output_dir or Path.home() / "Documents" / "Research"
 
     def initialize_research(self, query: str) -> ResearchState:
@@ -192,8 +194,9 @@ every active high-priority facet has direct evidence and counterevidence checked
 material positions and an explanation. After readiness, seek
 two subsequent low-yield residual probe rounds in distinct query families aimed at high-priority
 facets. Together the rounds address remaining high-priority gaps. A round is low
-yield only with zero new relevant canonical sources for high-priority facets and
-zero material facet changes; new evidence or material change resets the count.
+yield only with zero new relevant canonical sources in the round, including
+sources for supporting facets, and zero material facet changes. Any new relevant
+source or material change resets the count.
 A mixed-family round counts once. Stop as coverage-saturated only while readiness
 holds and both post-readiness rounds pass. Otherwise continue within budget.
 At exhaustion, stop as budget-exhausted with all unresolved high-priority facets
@@ -259,6 +262,10 @@ citation, report, and link checks; repair local defects before delivery.
 
     def run_pipeline(self, query: str) -> str:
         """Display phase templates and return a suggested report path."""
+        if not self._explicit_output_dir:
+            topic = re.sub(r'[^\w]+', '_', query, flags=re.UNICODE).strip('_')[:80] or 'Topic'
+            self.output_dir = (Path.home() / 'Documents' /
+                               f"{topic}_Research_{datetime.now().strftime('%Y%m%d')}")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n{'#'*80}")
         print(f"# DEEP RESEARCH ENGINE")

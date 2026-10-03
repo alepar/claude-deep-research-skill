@@ -20,6 +20,17 @@ class ResearchEngineInstructionsTest(unittest.TestCase):
             self.assertEqual(report_path.parent, destination)
             self.assertTrue(list(destination.glob('research_state_*.json')))
 
+    def test_default_output_directory_uses_topic_and_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch('scripts.research_engine.Path.home', return_value=Path(directory)):
+                engine = ResearchEngine(ResearchMode.QUICK)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    report_path = Path(engine.run_pipeline('Test question: approaches?'))
+            self.assertEqual(report_path.parent.parent, Path(directory) / 'Documents')
+            self.assertRegex(report_path.parent.name,
+                             r'^Test_question_approaches_Research_\d{8}$')
+            self.assertTrue(list(report_path.parent.glob('research_state_*.json')))
+
     def test_phase_guidance_keeps_worker_boundaries_and_user_output_choice(self):
         with tempfile.TemporaryDirectory() as directory:
             engine = ResearchEngine(ResearchMode.DEEP, output_dir=Path(directory))
@@ -42,6 +53,8 @@ class ResearchEngineInstructionsTest(unittest.TestCase):
         retrieval = engine.get_phase_instructions(ResearchPhase.RETRIEVE)
         self.assertIn('queries.jsonl', retrieval)
         self.assertIn('two subsequent low-yield residual probe rounds', retrieval)
+        self.assertIn('zero new relevant canonical sources in the round', retrieval)
+        self.assertNotIn('sources for high-priority facets', retrieval)
         self.assertIn('budget-exhausted', retrieval)
 
     def test_cli_reports_instruction_scaffold_not_completed_research(self):

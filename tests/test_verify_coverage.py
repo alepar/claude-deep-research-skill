@@ -240,6 +240,23 @@ class TestVerifyCoverage(unittest.TestCase):
              'before': 'unchecked', 'after': 'searched-none-found'}]
         self.assert_invalid('low-yield')
 
+    def test_supporting_facet_source_also_resets_saturation(self):
+        supporting_source = hashlib.sha256(b'https://example.org/supporting').hexdigest()[:16]
+        self.sources.append({'source_id': supporting_source,
+                             'canonical_locator': 'https://example.org/supporting'})
+        self.coverage['facets'].append({
+            'id': 'F2', 'question': 'What else matters?', 'priority': 'supporting',
+            'source_types': ['primary documentation'], 'status': 'unresolved',
+            'active': True, 'query_ids': ['Q3'], 'evidence_ids': [],
+            'contested_positions': [], 'counterevidence': 'unchecked',
+            'gap_note': 'Needs evidence', 'scope_change': None,
+        })
+        self.queries[3]['facet_ids'].append('F2')
+        self.queries[3]['result_source_ids'] = [supporting_source]
+        self.queries[3]['new_relevant_source_ids'] = [supporting_source]
+        self.coverage['completed_rounds'][2]['new_relevant_source_ids'] = [supporting_source]
+        self.assert_invalid('low-yield')
+
     def test_budget_stop_records_unresolved_gaps(self):
         self.stop.update(reason='budget-exhausted', round=1,
                          unresolved_high_priority_facet_ids=['F1'],
