@@ -48,13 +48,15 @@ class TestReportPackage(unittest.TestCase):
                 ],
             },
         }
+        self.manifest['retrieval_stop'] = {'reason': 'budget-exhausted', 'round': 1,
+                                           'basis': 'Recorded before writing.'}
         self.coverage = {'initial_facets': [
             {'id': 'facet/alpha', 'priority': 'high', 'question': 'Alpha?'},
             {'id': 'facet-beta', 'priority': 'high', 'question': 'Beta?'},
         ], 'facets': [
             {'id': 'facet/alpha', 'priority': 'high', 'active': True, 'status': 'supported'},
             {'id': 'facet-beta', 'priority': 'high', 'active': True, 'status': 'supported'},
-        ]}
+        ], 'stop': copy.deepcopy(self.manifest['retrieval_stop'])}
         self.sources = [
             {'source_id': SOURCE_A, 'title': 'Alpha source',
              'raw_url': 'https://example.org/alpha'},
@@ -94,14 +96,19 @@ class TestReportPackage(unittest.TestCase):
                            ('claims', self.claims)]:
             (self.dir / (name + '.jsonl')).write_text(
                 ''.join(json.dumps(row) + '\n' for row in rows))
-        (self.dir / 'report.md').write_text(self.final)
+        final_path = self.dir / self.manifest.get('reporting', {}).get('final_report_path', 'report.md')
+        final_path.parent.mkdir(parents=True, exist_ok=True)
+        final_path.write_text(self.final)
         (self.dir / 'dossiers').mkdir(exist_ok=True)
         (self.dir / 'dossiers/alpha.md').write_text(self.alpha)
         (self.dir / 'dossiers/beta.md').write_text(self.beta)
 
-    def run_check(self):
+    def run_check(self, delivery=False):
         self.save()
-        result = subprocess.run([sys.executable, str(SCRIPT), '--dir', str(self.dir)],
+        args = [sys.executable, str(SCRIPT), '--dir', str(self.dir)]
+        if delivery:
+            args.append('--delivery')
+        result = subprocess.run(args,
                                 text=True, capture_output=True)
         return result.returncode, json.loads(result.stdout)
 
@@ -120,6 +127,76 @@ class TestReportPackage(unittest.TestCase):
         del self.manifest['reporting']
         code, result = self.run_check()
         self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_delivery_requires_reporting_even_for_legacy_manifest(self):
+        del self.manifest['reporting']
+        code, result = self.run_check(delivery=True)
+        self.assertEqual(result['status'], 'invalid')
+        self.assertIn('reporting', '\n'.join(result['errors']))
+
+    def test_delivery_requires_matching_stop_in_manifest_and_coverage(self):
+        self.manifest['retrieval_stop'] = None
+        code, result = self.run_check(delivery=True)
+        self.assertIn('retrieval_stop', '\n'.join(result['errors']))
+        self.manifest['retrieval_stop'] = {'reason': 'budget-exhausted'}
+        code, result = self.run_check(delivery=True)
+        self.assertIn('retrieval_stop', '\n'.join(result['errors']))
+
+    def test_present_empty_reporting_is_invalid_in_read_and_delivery_modes(self):
+        self.manifest['reporting'] = {}
+        for delivery in (False, True):
+            with self.subTest(delivery=delivery):
+                code, result = self.run_check(delivery=delivery)
+                self.assertNotEqual(code, 0)
+                self.assertIn('output_mode', '\n'.join(result['errors']))
+
+    def test_schema_requires_complete_reporting_when_present(self):
+        schema = json.loads((ROOT / 'schemas/run_manifest.schema.json').read_text())
+        self.assertEqual(set(schema['properties']['reporting']['required']),
+                         {'output_mode', 'final_report_path', 'dossiers'})
+
+    def test_compact_quick_and_standard_delivery_need_final_facet_coverage(self):
+        self.manifest['reporting']['dossiers'] = []
+        self.final = self.final.replace(
+            '[Alpha](dossiers/alpha.md) and [Beta](dossiers/beta.md)', 'the evidence')
+        for mode in ('quick', 'standard'):
+            with self.subTest(mode=mode):
+                self.manifest['mode'] = mode
+                code, result = self.run_check(delivery=True)
+                self.assertEqual((code, result['status']), (0, 'ok'), result)
+                self.final = self.final.replace('<!-- facet: facet-beta -->', '')
+                code, result = self.run_check(delivery=True)
+                self.assertIn('omits active high-priority facet', '\n'.join(result['errors']))
+                self.final += '\n<!-- facet: facet-beta -->'
+
+    def test_deep_delivery_without_dossiers_is_incomplete(self):
+        self.manifest['reporting']['dossiers'] = []
+        self.assert_invalid('has no dossier')
+
+    def test_draft_dossier_is_not_deliverable(self):
+        self.manifest['reporting']['dossiers'][0]['status'] = 'draft'
+        code, result = self.run_check(delivery=True)
+        self.assertIn('draft', '\n'.join(result['errors']))
+
+    def test_supported_final_synthesis_claim_needs_anchor(self):
+        self.claims.append({'claim_id': '2' * 16, 'section_id': 'final:synthesis',
+                            'support_status': 'supported', 'claim_type': 'synthesis',
+                            'evidence_ids': [EVIDENCE_A], 'cited_source_ids': [SOURCE_A]})
+        code, result = self.run_check(delivery=True)
+        self.assertIn('missing claim anchor', '\n'.join(result['errors']))
+
+    def test_nested_final_accepts_angle_and_safe_parent_links(self):
+        self.manifest['reporting']['final_report_path'] = 'reports/final.md'
+        self.final = self.final.replace('](dossiers/alpha.md)', '](<../dossiers/alpha.md>)')
+        self.final = self.final.replace('](dossiers/beta.md)', '](../dossiers/beta.md)')
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_nested_final_rejects_parent_link_outside_package(self):
+        self.manifest['reporting']['final_report_path'] = 'reports/final.md'
+        self.final = self.final.replace('](dossiers/alpha.md)', '](<../../outside.md>)')
+        code, result = self.run_check(delivery=True)
+        self.assertIn('inside the package', '\n'.join(result['errors']))
 
     def test_markdown_package_can_request_both_html_and_pdf(self):
         self.manifest['reporting']['requested_formats'] = ['html', 'pdf']

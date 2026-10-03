@@ -94,11 +94,23 @@ class TestVerifyCoverage(unittest.TestCase):
         write_jsonl(os.path.join(self.dir, 'sources.jsonl'), self.sources)
         write_jsonl(os.path.join(self.dir, 'evidence.jsonl'), self.evidence)
 
-    def check(self):
+    def check(self, require_stop=False):
         self.save()
-        proc = subprocess.run([sys.executable, VERIFY, '--dir', self.dir],
+        args = [sys.executable, VERIFY, '--dir', self.dir]
+        if require_stop:
+            args.append('--require-stop')
+        proc = subprocess.run(args,
                               capture_output=True, text=True)
         return proc.returncode, json.loads(proc.stdout)
+
+    def test_delivery_requires_persisted_stop(self):
+        self.coverage['stop'] = None
+        self.manifest['retrieval_stop'] = None
+        code, result = self.check()
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+        code, result = self.check(require_stop=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn('retrieval_stop required', '\n'.join(result['errors']))
 
     def assert_invalid(self, fragment):
         code, result = self.check()

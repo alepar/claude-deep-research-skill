@@ -117,9 +117,9 @@ extracts the exact URL.
 ## Validate and deliver
 
 ```bash
-python scripts/verify_coverage.py --dir [run_folder]
+python scripts/verify_coverage.py --dir [run_folder] --require-stop
 python scripts/verify_claim_support.py verify --dir [run_folder] --strict
-python scripts/validate_report_package.py --dir [run_folder]
+python scripts/validate_report_package.py --dir [run_folder] --delivery
 python scripts/verify_citations.py --report [final_report_path]
 ```
 

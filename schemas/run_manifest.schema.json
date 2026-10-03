@@ -110,7 +110,8 @@
     },
     "reporting": {
       "type": "object",
-      "description": "Optional delivered report package. Omit for older and compact runs.",
+      "description": "Optional for legacy reads; required for delivery, including compact reports with an empty dossier list.",
+      "required": ["output_mode", "final_report_path", "dossiers"],
       "properties": {
         "output_mode": {
           "description": "Legacy primary-format field; new runs use markdown and list optional renders in requested_formats.",
