@@ -16,6 +16,14 @@ def _read_json(path):
         return json.load(handle)
 
 
+def _write_state(run_dir, state):
+    destination = Path(run_dir) / STATE_NAME
+    temporary = destination.with_name(destination.name + '.tmp')
+    temporary.write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n',
+                         encoding='utf-8')
+    os.replace(temporary, destination)
+
+
 def save_checkpoint(run_dir, progress):
     """Snapshot manifest paths and progress at a section or dossier boundary."""
     run_dir = Path(run_dir)
@@ -51,17 +59,32 @@ def save_checkpoint(run_dir, progress):
         'words_generated': progress['words_generated'],
         'worker_returns': progress.get('worker_returns', []),
     }
-    destination = run_dir / STATE_NAME
-    temporary = destination.with_name(destination.name + '.tmp')
-    temporary.write_text(json.dumps(state, indent=2, ensure_ascii=False) + '\n',
-                         encoding='utf-8')
-    os.replace(temporary, destination)
+    previous = run_dir / STATE_NAME
+    state['completed_stretches'] = (load_checkpoint(run_dir).get('completed_stretches', [])
+                                    if previous.exists() else [])
+    _write_state(run_dir, state)
     return state
 
 
 def load_checkpoint(run_dir):
     """Read a previously persisted boundary without reconstructing from prose."""
     return _read_json(Path(run_dir) / STATE_NAME)
+
+
+def begin_new_stretch(run_dir):
+    """Persist a fresh writer counter while retaining the prior stretch."""
+    state = load_checkpoint(run_dir)
+    if state.get('next_task') is None:
+        raise ValueError('cannot resume a completed report')
+    if state.get('words_generated', 0) <= 0:
+        raise ValueError('current writer stretch has no words to preserve')
+    state.setdefault('completed_stretches', []).append({
+        'words_generated': state['words_generated'],
+        'next_task': state['next_task'],
+    })
+    state['words_generated'] = 0
+    _write_state(run_dir, state)
+    return state
 
 
 def select_action(state, available_words=None, estimated_next_words=None,
@@ -98,9 +121,13 @@ def main():
     decide.add_argument('--available-words', type=int)
     decide.add_argument('--estimated-next-words', type=int)
     decide.add_argument('--subagents-available', action='store_true')
+    resume = commands.add_parser('resume', help='Begin a new writer stretch from checkpoint')
+    resume.add_argument('--dir', required=True)
     args = parser.parse_args()
     if args.command == 'save':
         result = save_checkpoint(args.dir, _read_json(Path(args.progress_json)))
+    elif args.command == 'resume':
+        result = begin_new_stretch(args.dir)
     else:
         result = select_action(load_checkpoint(args.dir), args.available_words,
                                args.estimated_next_words, args.subagents_available)

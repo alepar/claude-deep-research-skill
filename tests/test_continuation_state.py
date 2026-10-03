@@ -76,6 +76,34 @@ class ContinuationStateTests(unittest.TestCase):
         self.assertEqual((result['action'], result['mechanism']),
                          ('handoff', 'sequential-resume'))
 
+    def test_resume_starts_new_stretch_and_preserves_previous_count(self):
+        progress = {'completed_sections': ['dossier-a:summary'], 'open_gaps': [],
+                    'next_task': {'id': 'dossier-b:findings'}, 'words_generated': 18000}
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        resumed = continuation_state.begin_new_stretch(self.run_dir)
+        self.assertEqual(resumed['words_generated'], 0)
+        self.assertEqual(resumed['completed_stretches'][0]['words_generated'], 18000)
+        self.assertEqual(resumed['completed_stretches'][0]['next_task']['id'],
+                         'dossier-b:findings')
+        self.assertEqual(continuation_state.select_action(resumed)['action'], 'continue')
+        self.assertEqual(continuation_state.load_checkpoint(self.run_dir), resumed)
+        progress['words_generated'] = 50
+        after_save = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(after_save['completed_stretches'], resumed['completed_stretches'])
+        self.assertEqual(after_save['words_generated'], 50)
+
+    def test_cli_resume_after_fallback_handoff(self):
+        progress = {'completed_sections': [], 'open_gaps': [],
+                    'next_task': {'id': 'final:synthesis'}, 'words_generated': 18000}
+        continuation_state.save_checkpoint(self.run_dir, progress)
+        command = [sys.executable, str(ROOT / 'scripts/continuation_state.py')]
+        resumed = subprocess.run(command + ['resume', '--dir', str(self.run_dir)],
+                                 capture_output=True, text=True)
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        decided = subprocess.run(command + ['decide', '--dir', str(self.run_dir)],
+                                 capture_output=True, text=True)
+        self.assertEqual(json.loads(decided.stdout)['action'], 'continue')
+
     def test_cli_save_and_decide_uses_saved_checkpoint(self):
         progress = self.run_dir / 'progress.json'
         progress.write_text(json.dumps({

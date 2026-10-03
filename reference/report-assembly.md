@@ -50,7 +50,9 @@ Group by answerable facet first. A dossier may cover closely related facets,
 but list their IDs in `run_manifest.reporting.dossiers[].facet_ids`. Inside it,
 group related sources and competing positions. Each Markdown dossier has a
 short summary, facet question and answer, supported claims, counterevidence,
-methods and limits, and open gaps. Detailed passages belong here when useful.
+methods and limits, open gaps, and its own bibliography. Use the
+[dossier template](../templates/dossier_template.md) for that structure.
+Detailed passages belong here when useful.
 
 The lead owns `run_manifest.json` and all canonical ledgers. It adds the
 optional `reporting` object with `output_mode`, relative `final_report_path`,
@@ -77,6 +79,10 @@ The IDs are the real 16-character IDs from `claims.jsonl`, `evidence.jsonl`,
 and `sources.jsonl`; the display number comes from the canonical source
 registry. Declare all dossier IDs used in its manifest row. A dossier is a
 derived reading artifact, never an original source for the final report.
+Give each dossier a `## Bibliography` section mapping every `[N]` used in
+its body to the original source title and URL from `sources.jsonl`, even when
+that source is absent from the final report. Use `[N] [Title](URL)` with no
+punctuation attached to the URL. The package validator checks these mappings.
 
 ## Synthesize the final report
 
@@ -100,7 +106,8 @@ Display numbers are presentation only. Do not persist them as source identity
 or rely on a working-memory citation list. Derive each bibliography entry from
 the registry, with its correct `[N]`, title, and original URL. Include an
 entry for every number cited in the final body; do not use ranges or truncated
-placeholders.
+placeholders. Format entries as `[N] [Title](URL)` so citation verification
+extracts the exact URL.
 
 ## Validate and deliver
 

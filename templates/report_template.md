@@ -49,7 +49,7 @@ not support a recommendation, say what further evidence would decide it.]
 ## Bibliography
 
 [One complete entry per visible citation used in the report body. Format each
-as `[N] Title. Original URL.` with the title and URL from `sources.jsonl`.
+as `[N] [Title](URL)` with the title and URL from `sources.jsonl`.
 Do not truncate, group number ranges, or cite a dossier as a source.]
 
 ## Methodology

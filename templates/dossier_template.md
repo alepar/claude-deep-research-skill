@@ -29,3 +29,9 @@ with a visible [N] followed by the registered anchor below, using real IDs.]
 
 [Describe missing evidence, source limitations, and questions to return to the
 lead for new retrieval. A partial dossier must say what remains unresolved.]
+
+## Bibliography
+
+[Include every source number cited in this dossier, even when the source is
+not cited in the final report. Copy the title and URL from `sources.jsonl`.
+Format each line as `[N] [Title](URL)`; do not append punctuation to the URL.]

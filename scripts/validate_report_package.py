@@ -119,11 +119,11 @@ def check_anchors(markdown, label, expected_claim_ids, claims, evidence, sources
     return found
 
 
-def check_bibliography(markdown, sources, errors):
-    """Match final display numbers and identifying fields to canonical sources."""
+def check_bibliography(markdown, sources, errors, label='final report'):
+    """Match visible numbers and identifying fields to canonical sources."""
     heading = re.search(r'^## Bibliography\s*$', markdown, re.MULTILINE | re.IGNORECASE)
     if not heading:
-        errors.append('final report missing Bibliography section')
+        errors.append(f'{label} missing Bibliography section')
         return
     body = markdown[:heading.start()]
     section = markdown[heading.end():]
@@ -137,23 +137,23 @@ def check_bibliography(markdown, sources, errors):
         end = entry_matches[i + 1].start() if i + 1 < len(entry_matches) else len(section)
         entry = section[match.start(2):end].strip()
         if number in entries:
-            errors.append(f'duplicate bibliography entry: [{number}]')
+            errors.append(f'{label} duplicate bibliography entry: [{number}]')
         entries[number] = entry
     source_order = list(sources.values())
     for number, entry in entries.items():
         if number < 1 or number > len(source_order):
-            errors.append(f'bibliography [{number}] has no registered source')
+            errors.append(f'{label} bibliography [{number}] has no registered source')
             continue
         source = source_order[number - 1]
         title = source.get('title')
         locator = source.get('raw_url')
         if not title or not locator or title.casefold() not in entry.casefold() or locator not in entry:
-            errors.append(f'bibliography [{number}] does not match registered source')
+            errors.append(f'{label} bibliography [{number}] does not match registered source')
     for group in re.findall(r'\[(\d+(?:,\s*\d+)*)\]', body):
         for raw_number in group.split(','):
             number = int(raw_number.strip())
             if number not in entries:
-                errors.append(f'missing bibliography entry: [{number}]')
+                errors.append(f'{label} missing bibliography entry: [{number}]')
 
 
 def verify(directory):
@@ -214,10 +214,12 @@ def verify(directory):
             if claim and claim.get('claim_type') == 'factual' and claim.get('support_status') != 'supported':
                 errors.append(f'{label} claim {cid} is not supported')
         if path:
-            check_anchors(path.read_text(encoding='utf-8'), label,
+            dossier_text = path.read_text(encoding='utf-8')
+            check_anchors(dossier_text, label,
                           set(claim_ids), claims, evidence, sources, display_numbers, errors,
                           declared={'claim': set(claim_ids), 'evidence': set(evidence_ids),
                                     'source': set(source_ids)})
+            check_bibliography(dossier_text, sources, errors, label)
     for fid in active_high - covered:
         errors.append(f'active high-priority facet {fid} has no dossier')
     if final_path:

@@ -80,8 +80,12 @@ class TestReportPackage(unittest.TestCase):
                       + '\nSee [Alpha](dossiers/alpha.md) and [Beta](dossiers/beta.md).\n'
                       + '\n## Bibliography\n\n'
                       + '[1] [Alpha source](https://example.org/alpha).\n')
-        self.alpha = '# Alpha\n\nAlpha works [1]. ' + marker(CLAIM_A, EVIDENCE_A, SOURCE_A)
-        self.beta = '# Beta\n\nBeta works [2]. ' + marker(CLAIM_B, EVIDENCE_B, SOURCE_B)
+        self.alpha = ('# Alpha\n\nAlpha works [1]. '
+                      + marker(CLAIM_A, EVIDENCE_A, SOURCE_A)
+                      + '\n\n## Bibliography\n\n[1] [Alpha source](https://example.org/alpha)\n')
+        self.beta = ('# Beta\n\nBeta works [2]. '
+                     + marker(CLAIM_B, EVIDENCE_B, SOURCE_B)
+                     + '\n\n## Bibliography\n\n[2] [Beta source](https://example.org/beta)\n')
 
     def save(self):
         (self.dir / 'run_manifest.json').write_text(json.dumps(self.manifest))
@@ -177,6 +181,16 @@ class TestReportPackage(unittest.TestCase):
         self.final = self.final.replace(
             '[1] [Alpha source](https://example.org/alpha).', '')
         self.assert_invalid('missing bibliography entry: [1]')
+
+    def test_dossier_only_source_requires_its_own_bibliography_entry(self):
+        self.beta = self.beta.replace(
+            '[2] [Beta source](https://example.org/beta)', '')
+        self.assert_invalid('dossier dossier-beta missing bibliography entry: [2]')
+
+    def test_dossier_bibliography_must_match_canonical_source(self):
+        self.beta = self.beta.replace('https://example.org/beta',
+                                      'https://example.org/fabricated')
+        self.assert_invalid('dossier dossier-beta bibliography [2] does not match registered source')
 
     def test_bibliography_entry_must_match_registered_source(self):
         self.final = self.final.replace('https://example.org/alpha',

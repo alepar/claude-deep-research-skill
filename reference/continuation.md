@@ -7,10 +7,11 @@ individual writer running out of capacity, not a final-report length rule.
 ## Checkpoint
 
 `scripts/continuation_state.py` writes `continuation_state.json` inside the
-run folder. It snapshots the run manifest, coverage, queries, sources,
-evidence, claims, final-report path, dossier index, completed sections, open
-gaps, worker returns, and one bounded next task. The state uses canonical IDs
-and paths, not temporary citation numbers or a working-memory bibliography.
+run folder. It records paths to the manifest, coverage, queries, sources,
+evidence, claims, and final report, plus the dossier index, completed sections,
+open gaps, worker returns, and one bounded next task. These paths point to
+current artifacts; they are not copies of their historical contents. The state
+uses canonical IDs and paths, not temporary citation numbers or a working-memory bibliography.
 The lead remains the only writer of shared canonical files and the manifest.
 
 At a section boundary, prepare a progress JSON file such as:
@@ -44,8 +45,13 @@ provides a meaningful signal. The helper returns `continue` when it fits or
 only then does the helper use a conservative 18,000-word per-agent fallback.
 This is not a report word limit. If no subagent facility exists, omit
 `--subagents-available`; the helper returns `sequential-resume` so the lead
-can continue from the saved state in a later context. Do not claim the report
-is complete just because the current writer stopped.
+can continue from the saved state in a later context. At the start of that
+new context, load the checkpoint and run `python scripts/continuation_state.py
+resume --dir [run_folder]` once before calling `decide` again. This persists
+the previous writer's word count under `completed_stretches` and starts the
+new writer at zero without changing completed sections or the next task.
+Subsequent `save` calls retain that history. Do not claim the report is
+complete just because the current writer stopped.
 
 ## Handoff and join
 
