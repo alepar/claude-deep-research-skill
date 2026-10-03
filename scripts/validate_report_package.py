@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Validate links and canonical references in a layered research package.
+
+This is a structural check. A human must judge whether prose follows from evidence.
+"""
+
+import argparse
+import json
+import re
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+ANCHOR = re.compile(r'<!--\s*claim:\s*([^;\s]+);\s*evidence:\s*([^;\s]+);\s*source:\s*([^\s]+)\s*-->')
+FACET = re.compile(r'<!--\s*facet:\s*(.*?)\s*-->')
+LINK = re.compile(r'(?<!!)\[[^\]]+\]\(([^)]+)\)')
+ID = re.compile(r'^[0-9a-f]{16}$')
+
+
+def load_json(path):
+    with path.open(encoding='utf-8') as handle:
+        return json.load(handle)
+
+
+def load_jsonl(path):
+    with path.open(encoding='utf-8') as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+def resolved_path(directory, raw, label, errors):
+    """Return a package-local Markdown path, rejecting traversal and symlinks out."""
+    if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or \
+            '..' in Path(raw).parts or Path(raw).suffix.lower() != '.md':
+        errors.append(f'{label} must be a relative path to a Markdown file')
+        return None
+    path = (directory / raw).resolve()
+    if not path.is_relative_to(directory.resolve()):
+        errors.append(f'{label} must be a relative path inside the package')
+        return None
+    if not path.is_file():
+        errors.append(f'{label} missing file: {raw}')
+        return None
+    return path
+
+
+def unique_index(rows, key, label, errors):
+    result = {}
+    if not isinstance(rows, list):
+        errors.append(f'{label} rows must be an array')
+        return result
+    for row in rows:
+        if not isinstance(row, dict):
+            errors.append(f'{label} row must be an object')
+            continue
+        value = row.get(key)
+        if not isinstance(value, str) or not value:
+            errors.append(f'{label} missing {key}')
+        elif value in result:
+            errors.append(f'duplicate {label} ID: {value}')
+        else:
+            result[value] = row
+    return result
+
+
+def check_ids(values, index, label, kind, errors):
+    if not isinstance(values, list):
+        errors.append(f'{label} must be an array')
+        return []
+    if len(values) != len(set(map(str, values))):
+        errors.append(f'{label} has duplicate IDs')
+    for value in values:
+        if value not in index:
+            errors.append(f'{label} references unknown {kind}: {value}')
+    return values
+
+
+def check_anchors(markdown, label, expected_claim_ids, claims, evidence, sources,
+                  display_numbers, errors):
+    found = set()
+    for match in ANCHOR.finditer(markdown):
+        claim_id, evidence_id, source_id = match.groups()
+        found.add(claim_id)
+        if not ID.fullmatch(claim_id) or claim_id not in claims:
+            errors.append(f'{label} references unknown claim: {claim_id}')
+            continue
+        claim = claims[claim_id]
+        if claim.get('support_status') != 'supported':
+            errors.append(f'{label} claim {claim_id} is not supported')
+        if evidence_id not in evidence:
+            errors.append(f'{label} references unknown evidence: {evidence_id}')
+        if source_id not in sources:
+            errors.append(f'{label} references unknown source: {source_id}')
+        if evidence_id not in claim.get('evidence_ids', []):
+            errors.append(f'{label} claim {claim_id} not linked to evidence {evidence_id}')
+        if source_id not in claim.get('cited_source_ids', []):
+            errors.append(f'{label} claim {claim_id} not linked to source {source_id}')
+        if evidence_id in evidence and evidence[evidence_id].get('source_id') != source_id:
+            errors.append(f'{label} evidence {evidence_id} does not belong to source {source_id}')
+        citation = re.search(r'\[(\d+(?:,\s*\d+)*)\]\s*[.?!]?\s*$',
+                             markdown[max(0, match.start()-160):match.start()])
+        if not citation:
+            errors.append(f'{label} claim {claim_id} lacks a visible numeric citation before anchor')
+        elif source_id in display_numbers and str(display_numbers[source_id]) not in \
+                [number.strip() for number in citation.group(1).split(',')]:
+            errors.append(f'{label} claim {claim_id} visible citation does not match source {source_id}')
+    for claim_id in expected_claim_ids - found:
+        errors.append(f'{label} missing claim anchor: {claim_id}')
+    return found
+
+
+def verify(directory):
+    directory = Path(directory)
+    errors = []
+    try:
+        manifest = load_json(directory / 'run_manifest.json')
+    except (OSError, ValueError) as exc:
+        return {'status': 'invalid', 'errors': [f'run_manifest.json: {exc}']}
+    reporting = manifest.get('reporting')
+    if not reporting:
+        return {'status': 'ok', 'errors': []}
+    if not isinstance(reporting, dict):
+        return {'status': 'invalid', 'errors': ['reporting must be an object']}
+    if reporting.get('output_mode') not in {'markdown', 'html', 'pdf'}:
+        errors.append('reporting output_mode must be markdown, html, or pdf')
+    paths = manifest.get('artifact_paths', {})
+    try:
+        coverage = load_json(directory / paths.get('coverage', 'coverage.json'))
+        sources = unique_index(load_jsonl(directory / paths.get('sources', 'sources.jsonl')),
+                               'source_id', 'source', errors)
+        display_numbers = {sid: number for number, sid in enumerate(sources, 1)}
+        evidence = unique_index(load_jsonl(directory / paths.get('evidence', 'evidence.jsonl')),
+                                'evidence_id', 'evidence', errors)
+        claims = unique_index(load_jsonl(directory / paths.get('claims', 'claims.jsonl')),
+                              'claim_id', 'claim', errors)
+    except (OSError, ValueError) as exc:
+        return {'status': 'invalid', 'errors': [f'canonical artifact read: {exc}']}
+    facets = unique_index(coverage.get('facets', []), 'id', 'facet', errors)
+    active_high = {fid for fid, facet in facets.items()
+                   if facet.get('active') and facet.get('priority') == 'high'}
+    final_path = resolved_path(directory, reporting.get('final_report_path'),
+                               'final report', errors)
+    dossier_rows = reporting.get('dossiers', [])
+    dossiers = unique_index(dossier_rows, 'id', 'dossier', errors)
+    dossier_paths = set()
+    covered = set()
+    for did, dossier in dossiers.items():
+        label = f'dossier {did}'
+        path = resolved_path(directory, dossier.get('path'), label, errors)
+        if path in dossier_paths:
+            errors.append(f'duplicate dossier path: {dossier.get("path")}')
+        dossier_paths.add(path)
+        facet_ids = check_ids(dossier.get('facet_ids'), facets, label, 'facet', errors)
+        covered.update(facet_ids)
+        source_ids = check_ids(dossier.get('source_ids'), sources, label, 'source', errors)
+        evidence_ids = check_ids(dossier.get('evidence_ids'), evidence, label, 'evidence', errors)
+        claim_ids = check_ids(dossier.get('claim_ids'), claims, label, 'claim', errors)
+        if dossier.get('status') not in {'draft', 'complete', 'partial'}:
+            errors.append(f'{label} has invalid status')
+        for eid in evidence_ids:
+            if eid in evidence and evidence[eid].get('source_id') not in source_ids:
+                errors.append(f'{label} evidence {eid} source missing from dossier')
+        for cid in claim_ids:
+            claim = claims.get(cid)
+            if claim and not str(claim.get('section_id', '')).startswith(did + ':'):
+                errors.append(f'{label} claim {cid} has wrong section ID')
+            if claim and claim.get('claim_type') == 'factual' and claim.get('support_status') != 'supported':
+                errors.append(f'{label} claim {cid} is not supported')
+        if path:
+            check_anchors(path.read_text(encoding='utf-8'), label,
+                          set(claim_ids), claims, evidence, sources, display_numbers, errors)
+    for fid in active_high - covered:
+        errors.append(f'active high-priority facet {fid} has no dossier')
+    if final_path:
+        final = final_path.read_text(encoding='utf-8')
+        found_facets = set(FACET.findall(final))
+        for fid in active_high - found_facets:
+            errors.append(f'final report omits active high-priority facet: {fid}')
+        linked = set()
+        for raw in LINK.findall(final):
+            parsed = urlsplit(raw)
+            if parsed.scheme or parsed.netloc:
+                continue
+            target = raw.split('#', 1)[0].split('?', 1)[0]
+            if target.endswith('.md'):
+                link_path = resolved_path(final_path.parent, target, 'final report link', errors)
+                if link_path:
+                    linked.add(link_path)
+        for did, dossier in dossiers.items():
+            path = (directory / dossier.get('path', '')).resolve()
+            if path not in linked:
+                errors.append(f'final report missing link to dossier {did}')
+        final_claims = {cid for cid, claim in claims.items()
+                        if str(claim.get('section_id', '')).startswith('final:')
+                        and claim.get('claim_type') == 'factual'}
+        check_anchors(final, 'final report', final_claims,
+                      claims, evidence, sources, display_numbers, errors)
+    return {'status': 'invalid' if errors else 'ok', 'errors': errors}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dir', required=True, help='Research run directory')
+    args = parser.parse_args()
+    result = verify(args.dir)
+    print(json.dumps(result, indent=2))
+    raise SystemExit(0 if result['status'] == 'ok' else 1)
+
+
+if __name__ == '__main__':
+    main()

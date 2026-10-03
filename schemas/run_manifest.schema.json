@@ -107,6 +107,41 @@
         }
       },
       "default": null
+    },
+    "reporting": {
+      "type": "object",
+      "description": "Optional delivered report package. Omit for older and compact runs.",
+      "properties": {
+        "output_mode": { "enum": ["markdown", "html", "pdf"] },
+        "final_report_path": { "type": "string", "minLength": 1 },
+        "dossiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dossier" },
+          "default": []
+        }
+      },
+      "dependentRequired": {
+        "dossiers": ["output_mode", "final_report_path"],
+        "final_report_path": ["output_mode", "dossiers"],
+        "output_mode": ["final_report_path", "dossiers"]
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "dossier": {
+      "type": "object",
+      "required": ["id", "path", "facet_ids", "source_ids", "evidence_ids", "claim_ids", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+        "path": { "type": "string", "minLength": 1 },
+        "facet_ids": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "source_ids": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{16}$" }, "uniqueItems": true },
+        "evidence_ids": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{16}$" }, "uniqueItems": true },
+        "claim_ids": { "type": "array", "items": { "type": "string", "pattern": "^[0-9a-f]{16}$" }, "uniqueItems": true },
+        "status": { "enum": ["draft", "complete", "partial"] }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
