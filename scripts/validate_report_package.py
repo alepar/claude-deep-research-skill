@@ -152,13 +152,22 @@ def check_bibliography(markdown, sources, errors, label='final report'):
         source = source_order[number - 1]
         title = source.get('title')
         locator = source.get('raw_url')
-        link_targets = {match.group(1) or match.group(2)
-                        for match in MARKDOWN_LINK.finditer(entry)}
-        bare_urls = {match.group(1).rstrip('.,;!?)]}')
-                     for match in re.finditer(r'(?<!\S)([a-z][a-z0-9+.-]*://[^\s<>]+)',
-                                              entry, re.IGNORECASE)}
+        links = [(match.group(0)[1:].split('](', 1)[0],
+                  match.group(1) or match.group(2))
+                 for match in MARKDOWN_LINK.finditer(entry)]
+        title_links = [target for text, target in links
+                       if isinstance(title, str) and title.casefold() in text.casefold()]
+        if title_links:
+            matching_url = all(target == locator for target in title_links)
+        elif links:
+            matching_url = any(target == locator for _, target in links)
+        else:
+            bare_urls = {match.group(1).rstrip('.,;!?)]}')
+                         for match in re.finditer(r'(?<!\S)([a-z][a-z0-9+.-]*://[^\s<>]+)',
+                                                  entry, re.IGNORECASE)}
+            matching_url = locator in bare_urls
         if (not title or not locator or title.casefold() not in entry.casefold() or
-                locator not in link_targets | bare_urls):
+                not matching_url):
             errors.append(f'{label} bibliography [{number}] does not match registered source')
     for group in re.findall(r'\[(\d+(?:,\s*\d+)*)\]', body):
         for raw_number in group.split(','):

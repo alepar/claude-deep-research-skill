@@ -377,6 +377,25 @@ class TestReportPackage(unittest.TestCase):
         code, result = self.run_check(delivery=True)
         self.assertEqual((code, result['status']), (0, 'ok'), result)
 
+    def test_bibliography_bare_url_cannot_excuse_wrong_title_link(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            '[Alpha source](https://attacker.example) https://example.org/alpha')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_bibliography_link_label_url_cannot_excuse_wrong_target(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            '[Alpha source https://example.org/alpha ](https://attacker.example)')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_bibliography_secondary_link_cannot_excuse_wrong_title_link(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            '[Alpha source](https://attacker.example) '
+            '[source URL](https://example.org/alpha)')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
     def test_bibliography_entry_cannot_swap_source_numbers(self):
         self.final = self.final.replace(
             '[1] [Alpha source](https://example.org/alpha)',
