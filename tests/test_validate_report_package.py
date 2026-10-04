@@ -142,6 +142,15 @@ class TestReportPackage(unittest.TestCase):
         code, result = self.run_check(delivery=True)
         self.assertIn('retrieval_stop', '\n'.join(result['errors']))
 
+    def test_delivery_rejects_matching_critical_error_stop(self):
+        stop = {'reason': 'critical-error', 'round': 1,
+                'basis': 'Source retrieval failed.'}
+        self.manifest['retrieval_stop'] = stop
+        self.coverage['stop'] = copy.deepcopy(stop)
+        code, result = self.run_check(delivery=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn('critical-error', '\n'.join(result['errors']))
+
     def test_partial_dossier_rejects_saturated_stop_even_with_a_gap(self):
         self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
         self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
@@ -156,7 +165,7 @@ class TestReportPackage(unittest.TestCase):
     def test_partial_dossier_rejects_missing_or_unrelated_facet_gap(self):
         self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
         self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
-        for gaps in ([], ['facet-beta: No outcome data']):
+        for gaps in ([], ['facet-beta: No outcome data'], ['facet/alpha:   ']):
             with self.subTest(gaps=gaps):
                 self.manifest['retrieval_stop']['remaining_gaps'] = gaps
                 self.coverage['stop'] = copy.deepcopy(self.manifest['retrieval_stop'])
@@ -169,6 +178,14 @@ class TestReportPackage(unittest.TestCase):
         self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
         self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
         self.manifest['retrieval_stop']['remaining_gaps'] = ['facet/alpha: No outcome data']
+        self.coverage['stop'] = copy.deepcopy(self.manifest['retrieval_stop'])
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_partial_dossier_accepts_freeform_remaining_gap_with_unresolved_facet(self):
+        self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
+        self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
+        self.manifest['retrieval_stop']['remaining_gaps'] = ['No outcome data for alpha']
         self.coverage['stop'] = copy.deepcopy(self.manifest['retrieval_stop'])
         code, result = self.run_check(delivery=True)
         self.assertEqual((code, result['status']), (0, 'ok'), result)
@@ -374,6 +391,18 @@ class TestReportPackage(unittest.TestCase):
         self.final = self.final.replace(
             '[Alpha source](https://example.org/alpha)',
             'Alpha source — https://example.org/alpha.')
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_bibliography_accepts_exact_bare_url_ending_in_parenthesis(self):
+        url = 'https://example.org/topic_(alpha)'
+        self.sources[0]['raw_url'] = url
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            f'Alpha source — {url}')
+        self.alpha = self.alpha.replace(
+            '[Alpha source](https://example.org/alpha)',
+            f'Alpha source — {url}')
         code, result = self.run_check(delivery=True)
         self.assertEqual((code, result['status']), (0, 'ok'), result)
 
