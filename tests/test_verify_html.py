@@ -122,6 +122,71 @@ class TestHTMLVerifier(unittest.TestCase):
         self.assertTrue(any('entry [1]' in error for error in errors), errors)
         self.assertTrue(any('entry [2]' in error for error in errors), errors)
 
+    def test_bibliography_link_with_canonical_text_but_wrong_target_fails(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        for wrong_target in ('https://example.org/attacker', 'https://evil.example/a'):
+            with self.subTest(wrong_target=wrong_target):
+                html = ('<html><head><title>Answer</title></head><body>'
+                        '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                        '<h2>Bibliography</h2><p>[1] Source A '
+                        f'<a href="{wrong_target}">https://example.org/a</a>'
+                        '</p></body></html>')
+                passed, errors = self.verify_text(md, html)
+                self.assertFalse(passed)
+                self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
+
+    def test_bibliography_url_prefix_in_text_or_href_fails(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A '
+                '<a href="https://example.org/attacker">https://example.org/attacker</a>'
+                '</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertFalse(passed)
+        self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
+
+    def test_bibliography_rejects_unexpected_non_http_links(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        for unexpected_href in ('//evil.example/a', 'javascript:alert(1)',
+                                'mailto:impostor@example.org', '#wrong-source'):
+            with self.subTest(unexpected_href=unexpected_href):
+                html = ('<html><head><title>Answer</title></head><body>'
+                        '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                        '<h2>Bibliography</h2><p>[1] Source A '
+                        'https://example.org/a '
+                        f'<a href="{unexpected_href}">source</a>'
+                        '</p></body></html>')
+                passed, errors = self.verify_text(md, html)
+                self.assertFalse(passed)
+                self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
+
+    def test_bibliography_accepts_matching_local_link_from_rendered_subfolder(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a '
+              '[Dossier](dossiers/facet-a.md)\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A https://example.org/a '
+                '<a href="../dossiers/facet-a.md">Dossier</a>'
+                '</p></body></html>')
+        passed, errors = self.verify_text(md, html, ['dossiers/facet-a.md'],
+                                          'rendered/report.html')
+        self.assertTrue(passed, errors)
+
+    def test_rendered_angle_bracket_bibliography_link_passes(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] [Source A](<https://example.org/a>)\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] '
+                '<a href="https://example.org/a">Source A</a></p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertTrue(passed, errors)
+
     def test_adjacent_rendered_citations_preserve_grouped_attribution(self):
         md = ('# Answer\n\nThe finding has two sources [1, 2].\n\n'
               '## Bibliography\n\n[1] Source A https://example.org/a\n'
@@ -160,6 +225,47 @@ class TestHTMLVerifier(unittest.TestCase):
                 self.assertFalse(passed)
                 self.assertTrue(any('Missing Markdown passage' in error for error in errors), errors)
                 self.assertTrue(any('citation' in error.lower() for error in errors), errors)
+
+    def test_hidden_container_cannot_supply_only_body_finding_and_citation(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        hidden_attrs = ('hidden', 'style="display:none"',
+                        'style="DISPLAY : none !important"',
+                        'style="visibility: hidden"')
+        for attr in hidden_attrs:
+            with self.subTest(attr=attr):
+                html = ('<html><head><title>Answer</title></head><body>'
+                        '<h1>Answer</h1>'
+                        f'<div {attr}><div><p>A clear factual finding appears here [1].'
+                        '</p></div></div>'
+                        '<h2>Bibliography</h2><p>[1] Source A '
+                        'https://example.org/a</p></body></html>')
+                passed, errors = self.verify_text(md, html)
+                self.assertFalse(passed)
+                self.assertTrue(any('Missing Markdown passage' in error for error in errors), errors)
+                self.assertTrue(any('citation' in error.lower() for error in errors), errors)
+
+    def test_hidden_sibling_does_not_suppress_visible_report_content(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><div hidden><div>Draft [2]</div></div>'
+                '<p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A '
+                'https://example.org/a</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertTrue(passed, errors)
+
+    def test_hidden_void_element_does_not_suppress_following_report(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><input hidden value="draft">'
+                '<p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A '
+                'https://example.org/a</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertTrue(passed, errors)
 
     def test_template_cannot_supply_visible_heading_or_local_link(self):
         md = ('# Answer\n\n## Important Finding\n\n'

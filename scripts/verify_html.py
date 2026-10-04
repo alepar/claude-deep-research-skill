@@ -41,6 +41,8 @@ def citation_contexts(value: str):
 
 class Document(HTMLParser):
     NONRENDERED = {'script', 'style', 'template'}
+    VOID = {'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input',
+            'link', 'meta', 'param', 'source', 'track', 'wbr'}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -53,15 +55,24 @@ class Document(HTMLParser):
         self.heading_start = None
         self.links = []
         self.link_positions = []
+        self.link_ranges = []
         self.current_href = None
         self.current_link_start = None
         self.link_text = []
 
     def handle_starttag(self, tag, attrs):
-        if tag in self.NONRENDERED:
-            self.nonrendered.append(tag)
-            return
         if self.nonrendered:
+            if tag not in self.VOID:
+                self.nonrendered.append(tag)
+            return
+        attributes = dict(attrs)
+        style = attributes.get('style') or ''
+        hidden_style = any(re.fullmatch(
+            r'\s*(?:display\s*:\s*none|visibility\s*:\s*hidden)\s*(?:!important)?\s*',
+            declaration, re.I) for declaration in style.split(';'))
+        if tag in self.NONRENDERED or 'hidden' in attributes or hidden_style:
+            if tag not in self.VOID:
+                self.nonrendered.append(tag)
             return
         self.tags.add(tag)
         if tag == 'body':
@@ -70,7 +81,7 @@ class Document(HTMLParser):
             self.heading = []
             self.heading_start = len(self.body_parts)
         if tag == 'a':
-            self.current_href = dict(attrs).get('href')
+            self.current_href = attributes.get('href')
             self.current_link_start = len(self.body_parts)
             self.link_text = []
 
@@ -86,6 +97,8 @@ class Document(HTMLParser):
         if tag == 'a' and self.current_href is not None:
             self.links.append((self.current_href, ''.join(self.link_text).strip()))
             self.link_positions.append((self.current_href, self.current_link_start))
+            self.link_ranges.append((self.current_href, self.current_link_start,
+                                     len(self.body_parts)))
             self.current_href = None
             self.current_link_start = None
         if tag == 'body':
@@ -175,6 +188,27 @@ class HTMLVerifier:
         if citation_contexts(visible_markdown(md_body)) != citation_contexts(html_body):
             self.errors.append('Source citation placement changed in HTML body')
 
+    def _matches_bibliography_href(self, href, link_targets, urls):
+        if href in link_targets or href in urls:
+            return True
+        rendered = urlsplit(href)
+        if rendered.scheme or rendered.netloc or not rendered.path:
+            return False
+        rendered_path = Path(unquote(rendered.path))
+        if rendered_path.is_absolute():
+            return False
+        rendered_file = (self.html_path.parent / rendered_path).resolve()
+        for target in link_targets:
+            expected = urlsplit(target)
+            expected_path = Path(unquote(expected.path))
+            if (not expected.scheme and not expected.netloc and expected.path
+                    and not expected_path.is_absolute()
+                    and rendered.query == expected.query
+                    and rendered.fragment == expected.fragment
+                    and rendered_file == (self.md_path.parent / expected_path).resolve()):
+                return True
+        return False
+
     def _check_bibliography(self, bibliography, html_bib, doc, bib_heading):
         if bibliography is None:
             return
@@ -191,25 +225,44 @@ class HTMLVerifier:
             number = marker.group(1) or marker.group(2)
             end = markers[index + 1].start() if index + 1 < len(markers) else len(html_bib)
             rendered.setdefault(number, []).append((marker.start(), end))
-        links = [(href, sum(len(part) + 1 for part in doc.body_parts[bib_heading:position]))
-                 for href, position in doc.link_positions if position >= bib_heading]
+        def offset(position):
+            return sum(len(part) + 1 for part in doc.body_parts[bib_heading:position])
+
+        links = [(href, offset(position), offset(end))
+                 for href, position, end in doc.link_ranges if position >= bib_heading]
         for match in entries:
             number, entry = match.group(1), match.group(2).strip()
             entry_title = re.sub(r'https?://\S+', '', entry)
             entry_title = re.sub(MARKDOWN_LINK,
                                  lambda match: match.group(0).split('](')[0][1:], entry_title)
             entry_title = words(entry_title)
-            urls = re.findall(r'https?://[^\s)]+', entry)
+            link_targets = {link.group(1) or link.group(2)
+                            for link in MARKDOWN_LINK.finditer(entry)}
+            urls = [target for target in link_targets
+                    if target.startswith(('http://', 'https://'))]
+            urls.extend(re.findall(r'https?://[^\s<>]+', MARKDOWN_LINK.sub('', entry)))
             spans = rendered.get(number, [])
             if len(spans) != 1:
                 self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
                 continue
             start, end = spans[0]
             rendered_entry = html_bib[start:end]
-            entry_hrefs = {href for href, offset in links if start <= offset < end}
-            if ((entry_title and entry_title not in words(rendered_entry))
-                    or any(url not in rendered_entry and url not in entry_hrefs
-                           for url in urls)):
+            entry_links = [(href, link_start, link_end) for href, link_start, link_end in links
+                           if start <= link_start < end]
+            entry_hrefs = {href for href, _, _ in entry_links}
+            unlinked = list(rendered_entry)
+            for _, link_start, link_end in entry_links:
+                for position in range(max(0, link_start - start),
+                                      min(len(unlinked), link_end - start)):
+                    unlinked[position] = ' '
+            bare_urls = {candidate for match in re.finditer(r'https?://[^\s<>]+',
+                                                              ''.join(unlinked))
+                         for candidate in (match.group(0), match.group(0).rstrip('.,;!?'))}
+            rendered_title = words(re.sub(r'https?://\S+', '', rendered_entry))
+            if ((entry_title and entry_title not in rendered_title)
+                    or any(url not in bare_urls and url not in entry_hrefs for url in urls)
+                    or any(not self._matches_bibliography_href(href, link_targets, urls)
+                           for href in entry_hrefs)):
                 self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
 
     def _check_local_links(self, md, doc):
