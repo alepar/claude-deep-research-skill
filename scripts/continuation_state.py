@@ -127,6 +127,10 @@ def begin_new_stretch(run_dir):
 def select_action(state, available_words=None, estimated_next_words=None,
                   subagents_available=False):
     """Prefer capacity signals; use 18K words only when signals are unavailable."""
+    if state.get('retrieval_stop_reason') == 'critical-error':
+        return {'action': 'blocked', 'mechanism': None,
+                'basis': 'retrieval-stop',
+                'blockers': ['critical retrieval error requires a fresh validated stop']}
     if state.get('next_task') is None:
         blockers = []
         returns = state.get('worker_returns', [])

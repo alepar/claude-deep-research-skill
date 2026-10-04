@@ -103,6 +103,38 @@ class ContinuationStateTests(unittest.TestCase):
         state = continuation_state.save_checkpoint(self.run_dir, progress)
         self.assertEqual(continuation_state.select_action(state)['action'], 'partial')
 
+    def test_critical_retrieval_error_blocks_complete_and_partial_delivery(self):
+        progress = self.ready_progress()
+        progress['retrieval_stop_reason'] = 'critical-error'
+        for delivery_status in ('complete', 'partial'):
+            with self.subTest(delivery_status=delivery_status):
+                progress['delivery_status'] = delivery_status
+                state = continuation_state.save_checkpoint(self.run_dir, progress)
+                decision = continuation_state.select_action(state)
+                self.assertEqual(decision['action'], 'blocked')
+                self.assertIn('critical', ' '.join(decision['blockers']))
+
+    def test_fresh_stop_after_critical_error_requires_validation_before_completion(self):
+        progress = self.ready_progress()
+        progress['retrieval_stop_reason'] = 'critical-error'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'blocked')
+
+        progress['retrieval_stop_reason'] = 'coverage-saturated'
+        progress['final_validation']['coverage_stop'] = 'unrun'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'validate')
+        progress['final_validation']['coverage_stop'] = 'passed'
+        state = continuation_state.save_checkpoint(self.run_dir, progress)
+        self.assertEqual(continuation_state.select_action(state)['action'], 'complete')
+
+    def test_critical_retrieval_error_blocks_queued_work(self):
+        state = {'retrieval_stop_reason': 'critical-error',
+                 'next_task': {'id': 'dossier-b:findings'}, 'words_generated': 100}
+        decision = continuation_state.select_action(state)
+        self.assertEqual(decision['action'], 'blocked')
+        self.assertIn('critical', ' '.join(decision['blockers']))
+
     def test_resume_when_final_checks_pending(self):
         progress = self.ready_progress()
         progress['final_validation']['package'] = 'unrun'
