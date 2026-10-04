@@ -19,7 +19,7 @@ metrics: pending (upstream-feedback not yet run)
 
 ## Remaining
 
-- No open beads or confirmed material defects. Empirical recall gains are unmeasured on real research tasks, and the synthetic fixture does not exercise generated PDF output. Structural checks cannot establish whether prose follows from cited evidence. Source: `run.md`; `.superpowers/sdd/claude-deep-research-skill-ts9-plan/ts9.5-report.md`; final whole-epic review.
+- No open beads or confirmed material defects. Empirical recall gains are unmeasured on real research tasks, and the synthetic fixture does not exercise generated PDF output. Structural checks cannot establish whether prose follows from cited evidence. Source: `run.md`; `.superpowers/sdd/claude-deep-research-skill-ts9-plan/ts9.5-report.md`; `final-review.md`.
 
 ## Gotchas & surprises
 
