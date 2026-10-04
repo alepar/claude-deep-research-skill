@@ -32,9 +32,10 @@ def citation_contexts(value: str):
     result = []
     for index, token in enumerate(tokens):
         if re.fullmatch(r'\[\d+(?:,\s*\d+)*\]', token):
-            before = tuple(t for t in tokens[max(0, index - 5):index] if not t.startswith('['))
-            after = tuple(t for t in tokens[index + 1:index + 6] if not t.startswith('['))
-            result.append((re.sub(r'\s+', '', token), before, after))
+            before = tuple(t for t in tokens[:index] if not t.startswith('['))[-5:]
+            after = tuple(t for t in tokens[index + 1:] if not t.startswith('['))[:5]
+            for number in re.findall(r'\d+', token):
+                result.append((number, before, after))
     return result
 
 
@@ -168,8 +169,16 @@ class HTMLVerifier:
             return
         entries = list(re.finditer(r'^\[(\d+)\]\s+(.+?)(?=^\[\d+\]\s+|\Z)',
                                    bibliography, re.M | re.S))
-        bib_hrefs = {href for href, position in doc.link_positions
-                     if bib_heading is not None and position >= bib_heading}
+        expected_numbers = {match.group(1) for match in entries}
+        markers = [match for match in re.finditer(r'\[(\d+)\]|(?<!\d)(\d+)\.\s', html_bib)
+                   if (match.group(1) or match.group(2)) in expected_numbers]
+        rendered = {}
+        for index, marker in enumerate(markers):
+            number = marker.group(1) or marker.group(2)
+            end = markers[index + 1].start() if index + 1 < len(markers) else len(html_bib)
+            rendered.setdefault(number, []).append((marker.start(), end))
+        links = [(href, sum(len(part) + 1 for part in doc.body_parts[bib_heading:position]))
+                 for href, position in doc.link_positions if position >= bib_heading]
         for match in entries:
             number, entry = match.group(1), match.group(2).strip()
             entry_title = re.sub(r'https?://\S+', '', entry)
@@ -177,9 +186,15 @@ class HTMLVerifier:
                                  lambda match: match.group(0).split('](')[0][1:], entry_title)
             entry_title = words(entry_title)
             urls = re.findall(r'https?://[^\s)]+', entry)
-            if (not re.search(rf'\[{re.escape(number)}\]|(?<!\d){re.escape(number)}\.', html_bib)
-                    or (entry_title and entry_title not in words(html_bib))
-                    or any(url not in html_bib and url not in bib_hrefs
+            spans = rendered.get(number, [])
+            if len(spans) != 1:
+                self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
+                continue
+            start, end = spans[0]
+            rendered_entry = html_bib[start:end]
+            entry_hrefs = {href for href, offset in links if start <= offset < end}
+            if ((entry_title and entry_title not in words(rendered_entry))
+                    or any(url not in rendered_entry and url not in entry_hrefs
                            for url in urls)):
                 self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
 

@@ -107,6 +107,32 @@ class TestHTMLVerifier(unittest.TestCase):
         self.assertFalse(passed)
         self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
 
+    def test_swapped_bibliography_links_fail_for_each_entry(self):
+        md = ('# Answer\n\nA finding supported by two sources [1, 2].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n'
+              '[2] Source B https://example.org/b\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>A finding supported by two sources [1, 2].</p>'
+                '<h2>Bibliography</h2><ol>'
+                '<li>[1] Source A <a href="https://example.org/b">B link</a></li>'
+                '<li>[2] Source B <a href="https://example.org/a">A link</a></li>'
+                '</ol></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertFalse(passed)
+        self.assertTrue(any('entry [1]' in error for error in errors), errors)
+        self.assertTrue(any('entry [2]' in error for error in errors), errors)
+
+    def test_adjacent_rendered_citations_preserve_grouped_attribution(self):
+        md = ('# Answer\n\nThe finding has two sources [1, 2].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n'
+              '[2] Source B https://example.org/b\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>The finding has two sources [1] [2].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A https://example.org/a</p>'
+                '<p>[2] Source B https://example.org/b</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertTrue(passed, errors)
+
     def test_missing_visible_heading_is_reported(self):
         md = ('# Answer\n\n## Important Finding\n\n'
               'A clear factual finding appears here [1].\n\n'
