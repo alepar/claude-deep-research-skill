@@ -1,7 +1,7 @@
 # super-auto run — 2026-10-03-layered-research-prompts
 
 flags: planOneShot=false skipPlanRoast=false skipCodeRoast=false autonomous=true
-phase: roast-code
+phase: fix-loop
 codeMechanism: ordinary-subagents
 
 idea: Implement everything found in the prompting-guide audit and scoped in the approved layered research dossier design for the Claude deep-research skill.
@@ -12,7 +12,9 @@ epic: claude-deep-research-skill-ts9
 roast-design: 2026-10-03-layered-research-prompts-roast-design-1.md
 roastDesignRound: 1
 roastCodeRound: 2
-roast-code: 2026-10-03-layered-research-prompts-roast-pr-1.md
+roast-code: 2026-10-03-layered-research-prompts-roast-pr-1.md, 2026-10-03-layered-research-prompts-roast-pr-2.md
+stepBackCode-round-2: targeted repair — no design change; align independent delivery gates
+scope-filter: 4 in-scope · 0 punch-listed
 stepBackCode-round-1: targeted repair — no design change; restore delivery and rendering gates
 scope-filter: 10 in-scope · 0 punch-listed
 graph-pass: no safe edge cuts; schema precedes reporting prompts, and integration follows validation
