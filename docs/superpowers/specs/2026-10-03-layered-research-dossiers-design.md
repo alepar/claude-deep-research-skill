@@ -56,6 +56,10 @@ Run at least one end-to-end fixture from registered sources through two dossiers
 
 ## Post-Implementation Notes
 
+### Changes vs. original design — 2026-10-03
+
+Code review tightened the delivery boundary: a critical retrieval error blocks package delivery, partial dossiers require a recorded unresolved facet and gap, and bibliography links must match registered targets exactly. HTML fidelity checks exclude hidden content. The gap record accepts freeform text alongside the structured facet `gap_note`, as the schema permits. These repairs preserve the approved report and dossier workflow.
+
 The implementation adds the optional `run_manifest.reporting` dossier index,
 `templates/dossier_template.md`, layered assembly and quality guidance,
 `scripts/validate_report_package.py`, and `scripts/continuation_state.py`.
@@ -75,7 +79,7 @@ high-priority facets; it tests coverage, claim support, Markdown surfaces, and
 cross-dossier final links and source citations. It also rejects a final claim
 that cites a dossier as an original source. Existing tests cover delegated and
 sequential continuation, fallback capacity, and the Quick compatibility path.
-The full suite passed 118 tests on 2026-10-03; Python compilation and
-`git diff --check` passed. Structural checks cannot prove prose entailment,
+The initial integration suite passed 118 tests; the final branch suite passed
+181 tests on 2026-10-03. Python compilation and `git diff --check` passed. Structural checks cannot prove prose entailment,
 source relevance, or an empirical recall gain. A matched evaluation remains
 future work.
