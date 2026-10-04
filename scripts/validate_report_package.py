@@ -85,6 +85,14 @@ def check_ids(values, index, label, kind, errors):
     return valid
 
 
+def gap_applies_to_facet(gap, facet_id, facets):
+    """Use explicit facet prefixes when present; otherwise allow freeform gaps."""
+    if not isinstance(gap, str) or not gap.strip():
+        return False
+    prefix, separator, detail = gap.strip().partition(':')
+    return prefix not in facets or (separator and prefix == facet_id and bool(detail.strip()))
+
+
 def check_anchors(markdown, label, expected_claim_ids, claims, evidence, sources,
                   display_numbers, errors, declared=None):
     found = set()
@@ -162,9 +170,11 @@ def check_bibliography(markdown, sources, errors, label='final report'):
         elif links:
             matching_url = any(target == locator for _, target in links)
         else:
-            bare_urls = {match.group(1).rstrip('.,;!?)]}')
-                         for match in re.finditer(r'(?<!\S)([a-z][a-z0-9+.-]*://[^\s<>]+)',
-                                                  entry, re.IGNORECASE)}
+            bare_urls = {candidate for match in re.finditer(
+                r'(?<!\S)([a-z][a-z0-9+.-]*://[^\s<>]+)', entry, re.IGNORECASE)
+                for candidate in (match.group(1),
+                                  match.group(1).rstrip('.,;!?'),
+                                  match.group(1).rstrip('.,;!?)]}'))}
             matching_url = locator in bare_urls
         if (not title or not locator or title.casefold() not in entry.casefold() or
                 not matching_url):
@@ -218,6 +228,8 @@ def verify(directory, delivery=False):
         stop = manifest.get('retrieval_stop')
         if not isinstance(stop, dict) or not stop.get('reason') or stop != coverage.get('stop'):
             errors.append('delivery requires matching persisted retrieval_stop in manifest and coverage')
+        if isinstance(stop, dict) and stop.get('reason') == 'critical-error':
+            errors.append('delivery cannot proceed after critical-error retrieval stop')
     active_high = {fid for fid, facet in facets.items()
                    if facet.get('active') and facet.get('priority') == 'high'}
     final_path = resolved_path(directory, reporting.get('final_report_path'),
@@ -246,14 +258,13 @@ def verify(directory, delivery=False):
             if not isinstance(stop, dict) or stop.get('reason') != 'budget-exhausted':
                 errors.append(f'{label} partial dossier requires budget-exhausted stop')
             gaps = stop.get('remaining_gaps') if isinstance(stop, dict) else None
+            declared_gaps = gaps if isinstance(gaps, list) else []
             has_facet_gap = any(
                 facets.get(fid, {}).get('active') is True and
                 facets[fid].get('status') == 'unresolved' and
                 isinstance(facets[fid].get('gap_note'), str) and
                 bool(facets[fid]['gap_note'].strip()) and
-                isinstance(gaps, list) and
-                any(isinstance(gap, str) and gap.startswith(fid + ':') and
-                    bool(gap[len(fid) + 1:].strip()) for gap in gaps)
+                any(gap_applies_to_facet(gap, fid, facets) for gap in declared_gaps)
                 for fid in facet_ids if fid in facets)
             if not has_facet_gap:
                 errors.append(f'{label} partial dossier requires declared facet gap')
