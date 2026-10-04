@@ -1,7 +1,7 @@
 # super-auto run — 2026-10-03-layered-research-prompts
 
 flags: planOneShot=false skipPlanRoast=false skipCodeRoast=false autonomous=true
-phase: finish
+phase: done
 codeMechanism: ordinary-subagents
 
 idea: Implement everything found in the prompting-guide audit and scoped in the approved layered research dossier design for the Claude deep-research skill.
@@ -35,3 +35,5 @@ codeBuckets:
   sweep: 98422d9 — 181 passed, 0 failed, 0 errors, 0 skipped; failing: none; command: python3 -m unittest discover -s tests -p 'test_*.py' -q @ 98422d9
   worktreesKept: none
   processSweep: stopped 0 · survived 0
+
+integration: main — user selected local merge and push; fast-forward from 64cc893 to 9cb1420
