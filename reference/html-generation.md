@@ -28,10 +28,11 @@ Run:
     python scripts/verify_html.py --html [html_path] --md [final_report_path]
 
 Check that all material Markdown content and bibliography entries survive
-conversion, each original source citation remains readable, and every dossier
+conversion, each original source citation remains beside its claim, and every dossier
 link opens the intended local Markdown file. Repair only the defective rendered
 part, then rerun the affected checks. The Markdown package remains the
-authoritative evidence trail.
+authoritative evidence trail. Claim and facet comments are invisible in HTML;
+preserve their adjacent visible claim text and citation instead.
 
 ## PDF
 
