@@ -152,7 +152,22 @@ def check_bibliography(markdown, sources, errors, label='final report'):
         source = source_order[number - 1]
         title = source.get('title')
         locator = source.get('raw_url')
-        if not title or not locator or title.casefold() not in entry.casefold() or locator not in entry:
+        links = [(match.group(0)[1:].split('](', 1)[0],
+                  match.group(1) or match.group(2))
+                 for match in MARKDOWN_LINK.finditer(entry)]
+        title_links = [target for text, target in links
+                       if isinstance(title, str) and title.casefold() in text.casefold()]
+        if title_links:
+            matching_url = all(target == locator for target in title_links)
+        elif links:
+            matching_url = any(target == locator for _, target in links)
+        else:
+            bare_urls = {match.group(1).rstrip('.,;!?)]}')
+                         for match in re.finditer(r'(?<!\S)([a-z][a-z0-9+.-]*://[^\s<>]+)',
+                                                  entry, re.IGNORECASE)}
+            matching_url = locator in bare_urls
+        if (not title or not locator or title.casefold() not in entry.casefold() or
+                not matching_url):
             errors.append(f'{label} bibliography [{number}] does not match registered source')
     for group in re.findall(r'\[(\d+(?:,\s*\d+)*)\]', body):
         for raw_number in group.split(','):
@@ -226,6 +241,22 @@ def verify(directory, delivery=False):
             errors.append(f'{label} has invalid status')
         elif delivery and dossier.get('status') == 'draft':
             errors.append(f'{label} is draft and cannot be delivered')
+        elif delivery and dossier.get('status') == 'partial':
+            stop = manifest.get('retrieval_stop')
+            if not isinstance(stop, dict) or stop.get('reason') != 'budget-exhausted':
+                errors.append(f'{label} partial dossier requires budget-exhausted stop')
+            gaps = stop.get('remaining_gaps') if isinstance(stop, dict) else None
+            has_facet_gap = any(
+                facets.get(fid, {}).get('active') is True and
+                facets[fid].get('status') == 'unresolved' and
+                isinstance(facets[fid].get('gap_note'), str) and
+                bool(facets[fid]['gap_note'].strip()) and
+                isinstance(gaps, list) and
+                any(isinstance(gap, str) and gap.startswith(fid + ':') and
+                    bool(gap[len(fid) + 1:].strip()) for gap in gaps)
+                for fid in facet_ids if fid in facets)
+            if not has_facet_gap:
+                errors.append(f'{label} partial dossier requires declared facet gap')
         for eid in evidence_ids:
             if eid in evidence and evidence[eid].get('source_id') not in source_ids:
                 errors.append(f'{label} evidence {eid} source missing from dossier')

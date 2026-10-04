@@ -142,6 +142,46 @@ class TestReportPackage(unittest.TestCase):
         code, result = self.run_check(delivery=True)
         self.assertIn('retrieval_stop', '\n'.join(result['errors']))
 
+    def test_partial_dossier_rejects_saturated_stop_even_with_a_gap(self):
+        self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
+        self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
+        stop = {'reason': 'coverage-saturated', 'round': 1,
+                'remaining_gaps': ['facet/alpha: No outcome data']}
+        self.manifest['retrieval_stop'] = stop
+        self.coverage['stop'] = copy.deepcopy(stop)
+        code, result = self.run_check(delivery=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn('partial dossier requires budget-exhausted stop', '\n'.join(result['errors']))
+
+    def test_partial_dossier_rejects_missing_or_unrelated_facet_gap(self):
+        self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
+        self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
+        for gaps in ([], ['facet-beta: No outcome data']):
+            with self.subTest(gaps=gaps):
+                self.manifest['retrieval_stop']['remaining_gaps'] = gaps
+                self.coverage['stop'] = copy.deepcopy(self.manifest['retrieval_stop'])
+                code, result = self.run_check(delivery=True)
+                self.assertNotEqual(code, 0)
+                self.assertIn('partial dossier requires declared facet gap',
+                              '\n'.join(result['errors']))
+
+    def test_partial_dossier_accepts_budget_stop_with_its_concrete_facet_gap(self):
+        self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
+        self.coverage['facets'][0].update(status='unresolved', gap_note='No outcome data')
+        self.manifest['retrieval_stop']['remaining_gaps'] = ['facet/alpha: No outcome data']
+        self.coverage['stop'] = copy.deepcopy(self.manifest['retrieval_stop'])
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_partial_dossier_rejects_gap_when_facet_is_marked_supported(self):
+        self.manifest['reporting']['dossiers'][0]['status'] = 'partial'
+        self.manifest['retrieval_stop']['remaining_gaps'] = ['facet/alpha: No outcome data']
+        self.coverage['stop'] = copy.deepcopy(self.manifest['retrieval_stop'])
+        code, result = self.run_check(delivery=True)
+        self.assertNotEqual(code, 0)
+        self.assertIn('partial dossier requires declared facet gap',
+                      '\n'.join(result['errors']))
+
     def test_present_empty_reporting_is_invalid_in_read_and_delivery_modes(self):
         self.manifest['reporting'] = {}
         for delivery in (False, True):
@@ -317,6 +357,43 @@ class TestReportPackage(unittest.TestCase):
     def test_bibliography_entry_must_match_registered_source(self):
         self.final = self.final.replace('https://example.org/alpha',
                                         'https://example.org/fabricated')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_bibliography_rejects_registered_url_as_prefix_or_query_value(self):
+        for target in ('https://example.org/alpha.attacker.example',
+                       'https://attacker.example/?next=https://example.org/alpha'):
+            with self.subTest(target=target):
+                self.final = self.final.replace(
+                    '[Alpha source](https://example.org/alpha)',
+                    f'[Alpha source]({target})')
+                self.assert_invalid('bibliography [1] does not match registered source')
+                self.final = self.final.replace(f'[Alpha source]({target})',
+                                                '[Alpha source](https://example.org/alpha)')
+
+    def test_bibliography_accepts_exact_bare_url_token(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            'Alpha source — https://example.org/alpha.')
+        code, result = self.run_check(delivery=True)
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_bibliography_bare_url_cannot_excuse_wrong_title_link(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            '[Alpha source](https://attacker.example) https://example.org/alpha')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_bibliography_link_label_url_cannot_excuse_wrong_target(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            '[Alpha source https://example.org/alpha ](https://attacker.example)')
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_bibliography_secondary_link_cannot_excuse_wrong_title_link(self):
+        self.final = self.final.replace(
+            '[Alpha source](https://example.org/alpha)',
+            '[Alpha source](https://attacker.example) '
+            '[source URL](https://example.org/alpha)')
         self.assert_invalid('bibliography [1] does not match registered source')
 
     def test_bibliography_entry_cannot_swap_source_numbers(self):
