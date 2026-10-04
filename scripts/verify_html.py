@@ -188,6 +188,27 @@ class HTMLVerifier:
         if citation_contexts(visible_markdown(md_body)) != citation_contexts(html_body):
             self.errors.append('Source citation placement changed in HTML body')
 
+    def _matches_bibliography_href(self, href, link_targets, urls):
+        if href in link_targets or href in urls:
+            return True
+        rendered = urlsplit(href)
+        if rendered.scheme or rendered.netloc or not rendered.path:
+            return False
+        rendered_path = Path(unquote(rendered.path))
+        if rendered_path.is_absolute():
+            return False
+        rendered_file = (self.html_path.parent / rendered_path).resolve()
+        for target in link_targets:
+            expected = urlsplit(target)
+            expected_path = Path(unquote(expected.path))
+            if (not expected.scheme and not expected.netloc and expected.path
+                    and not expected_path.is_absolute()
+                    and rendered.query == expected.query
+                    and rendered.fragment == expected.fragment
+                    and rendered_file == (self.md_path.parent / expected_path).resolve()):
+                return True
+        return False
+
     def _check_bibliography(self, bibliography, html_bib, doc, bib_heading):
         if bibliography is None:
             return
@@ -215,8 +236,10 @@ class HTMLVerifier:
             entry_title = re.sub(MARKDOWN_LINK,
                                  lambda match: match.group(0).split('](')[0][1:], entry_title)
             entry_title = words(entry_title)
-            urls = [target for link in MARKDOWN_LINK.finditer(entry)
-                    if (target := link.group(1) or link.group(2)).startswith(('http://', 'https://'))]
+            link_targets = {link.group(1) or link.group(2)
+                            for link in MARKDOWN_LINK.finditer(entry)}
+            urls = [target for target in link_targets
+                    if target.startswith(('http://', 'https://'))]
             urls.extend(re.findall(r'https?://[^\s<>]+', MARKDOWN_LINK.sub('', entry)))
             spans = rendered.get(number, [])
             if len(spans) != 1:
@@ -235,9 +258,10 @@ class HTMLVerifier:
             bare_urls = {candidate for match in re.finditer(r'https?://[^\s<>]+',
                                                               ''.join(unlinked))
                          for candidate in (match.group(0), match.group(0).rstrip('.,;!?'))}
-            if ((entry_title and entry_title not in words(rendered_entry))
+            rendered_title = words(re.sub(r'https?://\S+', '', rendered_entry))
+            if ((entry_title and entry_title not in rendered_title)
                     or any(url not in bare_urls and url not in entry_hrefs for url in urls)
-                    or any(href.startswith(('http://', 'https://')) and href not in urls
+                    or any(not self._matches_bibliography_href(href, link_targets, urls)
                            for href in entry_hrefs)):
                 self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
 

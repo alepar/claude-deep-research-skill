@@ -148,6 +148,35 @@ class TestHTMLVerifier(unittest.TestCase):
         self.assertFalse(passed)
         self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
 
+    def test_bibliography_rejects_unexpected_non_http_links(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        for unexpected_href in ('//evil.example/a', 'javascript:alert(1)',
+                                'mailto:impostor@example.org', '#wrong-source'):
+            with self.subTest(unexpected_href=unexpected_href):
+                html = ('<html><head><title>Answer</title></head><body>'
+                        '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                        '<h2>Bibliography</h2><p>[1] Source A '
+                        'https://example.org/a '
+                        f'<a href="{unexpected_href}">source</a>'
+                        '</p></body></html>')
+                passed, errors = self.verify_text(md, html)
+                self.assertFalse(passed)
+                self.assertTrue(any('bibliography entry' in error.lower() for error in errors), errors)
+
+    def test_bibliography_accepts_matching_local_link_from_rendered_subfolder(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a '
+              '[Dossier](dossiers/facet-a.md)\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] Source A https://example.org/a '
+                '<a href="../dossiers/facet-a.md">Dossier</a>'
+                '</p></body></html>')
+        passed, errors = self.verify_text(md, html, ['dossiers/facet-a.md'],
+                                          'rendered/report.html')
+        self.assertTrue(passed, errors)
+
     def test_rendered_angle_bracket_bibliography_link_passes(self):
         md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
               '## Bibliography\n\n[1] [Source A](<https://example.org/a>)\n')
