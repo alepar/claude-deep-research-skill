@@ -39,6 +39,9 @@ class TestInitRun(unittest.TestCase):
             self.assertEqual(manifest['artifact_paths']['sources'], 'sources.jsonl')
             self.assertEqual(manifest['artifact_paths']['coverage'], 'coverage.json')
             self.assertEqual(manifest['artifact_paths']['queries'], 'queries.jsonl')
+            self.assertEqual(manifest['artifact_paths']['retrievals'], 'retrievals.jsonl')
+            self.assertIsNone(manifest['search_preflight'])
+            self.assertEqual(manifest['provider_config']['primary'], 'search-cli')
             with open(os.path.join(d, 'coverage.json')) as f:
                 coverage = json.load(f)
             self.assertEqual(coverage['schema_version'], 1)
@@ -47,7 +50,7 @@ class TestInitRun(unittest.TestCase):
             self.assertIsNone(coverage['stop'])
 
             # Empty JSONL files exist
-            for name in ('sources.jsonl', 'evidence.jsonl', 'claims.jsonl', 'queries.jsonl'):
+            for name in ('sources.jsonl', 'evidence.jsonl', 'claims.jsonl', 'queries.jsonl', 'retrievals.jsonl'):
                 path = os.path.join(d, name)
                 self.assertTrue(os.path.exists(path), f'{name} missing')
                 self.assertEqual(os.path.getsize(path), 0)

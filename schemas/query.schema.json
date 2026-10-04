@@ -16,7 +16,10 @@
     "result_source_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "new_relevant_source_ids": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
     "coverage_changed": { "type": "boolean" },
-    "notes": { "type": "string" }
+    "notes": { "type": "string" },
+    "status": { "enum": ["success", "partial", "failed"] },
+    "error": { "type": ["string", "null"] },
+    "results_considered": { "type": ["integer", "null"], "minimum": 0 }
   },
   "additionalProperties": false
 }

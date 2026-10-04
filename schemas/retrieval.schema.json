@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DocumentRetrievalAttempt",
+  "description": "One original-document access attempt in retrievals.jsonl, including failed and retried accesses.",
+  "type": "object",
+  "required": ["retrieval_id", "query_id", "tool", "url", "document_key", "status", "content_scope", "error"],
+  "properties": {
+    "retrieval_id": { "type": "string", "minLength": 1 },
+    "query_id": { "type": ["string", "null"], "minLength": 1 },
+    "tool": { "type": "string", "minLength": 1 },
+    "url": { "type": "string", "minLength": 1 },
+    "document_key": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["retrieved", "failed"] },
+    "content_scope": { "enum": ["full", "partial", "none"] },
+    "error": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "retrieved" } } },
+      "then": { "properties": { "content_scope": { "enum": ["full", "partial"] } } },
+      "else": { "properties": { "content_scope": { "const": "none" }, "error": { "type": "string", "minLength": 1 } } }
+    }
+  ],
+  "additionalProperties": false
+}

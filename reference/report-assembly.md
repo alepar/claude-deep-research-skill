@@ -25,7 +25,7 @@ python scripts/citation_manager.py init-run --out-dir [run_folder] --query "[que
 ```
 
 This creates `run_manifest.json`, `coverage.json`, `queries.jsonl`,
-`sources.jsonl`, `evidence.jsonl`, and `claims.jsonl`. The original question and
+`sources.jsonl`, `evidence.jsonl`, `claims.jsonl`, and `retrievals.jsonl`. The original question and
 `coverage.initial_facets` anchor scope. Record screened queries and completed
 rounds; register source and evidence IDs in the canonical files. A source may
 appear in several dossiers under the same stable source ID. Source similarity
@@ -90,6 +90,18 @@ that source is absent from the final report. Use `[N] [Title](URL)` with no
 punctuation attached to the URL. The package validator checks these mappings.
 
 ## Synthesize the final report
+
+Include a short methodology table in every final report, including Quick:
+tools actually used for search and fetching; search query attempts (including
+the live preflight query, failed attempts, and retries); result entries considered
+before deduplication; distinct original documents retrieved; and failed document
+fetch attempts. Derive these numbers from `queries.jsonl` and `retrievals.jsonl`
+using the definitions in [methodology.md](methodology.md#search-preflight-and-accounting).
+Name preflight failures, automatic fallback, and any partial provider errors.
+List failed document URLs and reasons, distinguishing recovered attempts from
+documents still inaccessible. Mention partial-document access where material.
+Missing older counters mean unknown/incomplete totals, not zero. These operational
+counts are not measures of recall or a substitute for facet coverage.
 
 Read dossier summaries first, then inspect underlying evidence for every
 material conclusion used in the final. Reconcile overlapping or conflicting

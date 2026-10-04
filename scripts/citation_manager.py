@@ -113,6 +113,7 @@ def cmd_init_run(args: argparse.Namespace) -> None:
         'claims': 'claims.jsonl',
         'coverage': 'coverage.json',
         'queries': 'queries.jsonl',
+        'retrievals': 'retrievals.jsonl',
         'report': 'report.md',
     }
 
@@ -127,6 +128,7 @@ def cmd_init_run(args: argparse.Namespace) -> None:
             'primary': 'search-cli',
             'scholarly': None,
         },
+        'search_preflight': None,
         'report_dir': out_dir,
         'artifact_paths': artifact_paths,
         'continuation': None,
@@ -138,7 +140,7 @@ def cmd_init_run(args: argparse.Namespace) -> None:
         f.write('\n')
 
     # Create empty artifact files
-    for name in ('sources', 'evidence', 'claims', 'queries'):
+    for name in ('sources', 'evidence', 'claims', 'queries', 'retrievals'):
         p = os.path.join(out_dir, artifact_paths[name])
         if not os.path.exists(p):
             open(p, 'w').close()

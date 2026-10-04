@@ -25,6 +25,13 @@ assembly reveals a critical in-scope gap.
 
 ## Before delivery
 
+Check the final methodology against query and retrieval logs: actual tools,
+query attempts, result entries considered, distinct documents read, failed fetch
+attempts, preflight failures, and automatic fallback. Retries are separate attempts;
+document totals deduplicate canonical identity. Do not substitute source counts
+or search snippets for documents read. Missing legacy counters must be disclosed
+as unknown/incomplete. Check worker joins have not duplicated attempt IDs.
+
 Run these checks on a new layered package:
 
     python scripts/verify_coverage.py --dir [run_folder] --require-stop

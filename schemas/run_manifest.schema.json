@@ -55,7 +55,7 @@
       "properties": {
         "primary": {
           "type": "string",
-          "description": "Primary search provider (e.g. WebSearch)"
+          "description": "Actual selected search tool after preflight; search-cli is preferred"
         },
         "scholarly": {
           "type": ["string", "null"],
@@ -68,6 +68,17 @@
       "type": "string",
       "description": "Absolute path to the report directory"
     },
+    "search_preflight": {
+      "type": ["object", "null"],
+      "description": "Null until checked. A failed CLI preflight selects an available fallback automatically.",
+      "required": ["status", "reason", "selected_tool"],
+      "properties": {
+        "status": { "enum": ["ok", "fallback", "blocked"] },
+        "reason": { "type": "string" },
+        "selected_tool": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
     "artifact_paths": {
       "type": "object",
       "required": ["sources", "evidence", "claims", "report"],
@@ -77,7 +88,8 @@
         "claims": { "type": "string", "default": "claims.jsonl" },
         "report": { "type": "string", "default": "report.md" },
         "coverage": { "type": "string", "default": "coverage.json" },
-        "queries": { "type": "string", "default": "queries.jsonl" }
+        "queries": { "type": "string", "default": "queries.jsonl" },
+        "retrievals": { "type": "string", "default": "retrievals.jsonl" }
       },
       "additionalProperties": false
     },

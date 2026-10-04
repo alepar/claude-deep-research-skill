@@ -76,9 +76,16 @@ continue from the checkpoint when capacity requires it. With no capacity signal,
 
 | Tool | Priority | Setup |
 |------|----------|-------|
-| search-cli | Available multi-provider option | `brew install search-cli` + API keys |
-| Host web search | Available host option | Host dependent |
+| search-cli | Preferred; preflight before retrieval | `brew install search-cli` + API keys |
+| Host web search | Automatic fallback on preflight or later CLI failure | Host dependent |
 | Exa MCP | Optional semantic search | MCP config |
+
+Preflight checks CLI availability and supported capabilities, then uses the first
+scoped query as a live probe. Failure triggers fallback automatically, without
+user confirmation. Final reports disclose tools used, preflight/fallback outcomes,
+query attempts, result entries considered, distinct documents retrieved, and
+retrieval failures. Query and document attempts persist in `queries.jsonl` and
+`retrievals.jsonl`; these counts describe access and effort, not measured recall.
 
 ## Architecture
 

@@ -55,4 +55,9 @@ Do not truncate, group number ranges, or cite a dossier as a source.]
 ## Methodology
 
 [Facet scope, retrieval families and rounds, source selection, counterevidence
-search, validation, final stop reason and basis, and remaining gaps.]
+search, validation, final stop reason and basis, and remaining gaps.
+Name search/fetch tools actually used, preflight outcome and automatic fallback.
+Report query attempts, result entries considered before deduplication, distinct
+original documents retrieved, and failed fetch attempts from the persisted logs.
+List failure URLs/reasons and whether recovered or still inaccessible. Mark missing
+accounting unknown/incomplete; snippets and metadata alone are not documents.]
