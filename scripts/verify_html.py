@@ -40,8 +40,11 @@ def citation_contexts(value: str):
 
 
 class Document(HTMLParser):
+    NONRENDERED = {'script', 'style', 'template'}
+
     def __init__(self):
         super().__init__(convert_charrefs=True)
+        self.nonrendered = []
         self.tags = set()
         self.body_depth = 0
         self.body_parts = []
@@ -55,6 +58,11 @@ class Document(HTMLParser):
         self.link_text = []
 
     def handle_starttag(self, tag, attrs):
+        if tag in self.NONRENDERED:
+            self.nonrendered.append(tag)
+            return
+        if self.nonrendered:
+            return
         self.tags.add(tag)
         if tag == 'body':
             self.body_depth += 1
@@ -67,6 +75,10 @@ class Document(HTMLParser):
             self.link_text = []
 
     def handle_endtag(self, tag):
+        if self.nonrendered:
+            if tag == self.nonrendered[-1]:
+                self.nonrendered.pop()
+            return
         if re.fullmatch(r'h[1-6]', tag) and self.heading is not None:
             self.headings.append((''.join(self.heading).strip(), self.heading_start))
             self.heading = None
@@ -80,6 +92,8 @@ class Document(HTMLParser):
             self.body_depth = max(0, self.body_depth - 1)
 
     def handle_data(self, data):
+        if self.nonrendered:
+            return
         if self.body_depth:
             self.body_parts.append(data)
         if self.heading is not None:

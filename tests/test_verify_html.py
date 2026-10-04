@@ -146,6 +146,65 @@ class TestHTMLVerifier(unittest.TestCase):
         self.assertFalse(passed)
         self.assertTrue(any('Missing heading' in error for error in errors), errors)
 
+    def test_script_or_style_cannot_supply_only_body_finding_and_citation(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        for tag in ('script', 'style'):
+            with self.subTest(tag=tag):
+                html = ('<html><head><title>Answer</title></head><body>'
+                        '<h1>Answer</h1>'
+                        f'<{tag}>A clear factual finding appears here [1].</{tag}>'
+                        '<h2>Bibliography</h2><p>[1] Source A '
+                        'https://example.org/a</p></body></html>')
+                passed, errors = self.verify_text(md, html)
+                self.assertFalse(passed)
+                self.assertTrue(any('Missing Markdown passage' in error for error in errors), errors)
+                self.assertTrue(any('citation' in error.lower() for error in errors), errors)
+
+    def test_template_cannot_supply_visible_heading_or_local_link(self):
+        md = ('# Answer\n\n## Important Finding\n\n'
+              'A clear factual finding appears here [1]. '
+              '[Details](dossiers/facet-a.md)\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><template><h2>Important Finding</h2>'
+                '<p>A clear factual finding appears here [1]. '
+                '<a href="dossiers/facet-a.md">Details</a></p></template>'
+                '<h2>Bibliography</h2><p>[1] Source A '
+                'https://example.org/a</p></body></html>')
+        passed, errors = self.verify_text(md, html, ['dossiers/facet-a.md'])
+        self.assertFalse(passed)
+        self.assertTrue(any('Missing heading' in error for error in errors), errors)
+        self.assertTrue(any('Missing Markdown passage' in error for error in errors), errors)
+        self.assertTrue(any('citation' in error.lower() for error in errors), errors)
+        self.assertTrue(any('Missing dossier/local link' in error for error in errors), errors)
+
+    def test_script_or_style_cannot_supply_bibliography_entry(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        for tag in ('script', 'style'):
+            with self.subTest(tag=tag):
+                html = ('<html><head><title>Answer</title></head><body>'
+                        '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                        '<h2>Bibliography</h2>'
+                        f'<{tag}>[1] Source A https://example.org/a</{tag}>'
+                        '</body></html>')
+                passed, errors = self.verify_text(md, html)
+                self.assertFalse(passed)
+                self.assertTrue(any('bibliography' in error.lower() for error in errors), errors)
+
+    def test_visible_report_can_include_nonrendered_metadata(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              '## Bibliography\n\n[1] Source A https://example.org/a\n')
+        html = ('<html><head><title>Answer</title><style>.x { color: red }</style>'
+                '</head><body><script>const metadata = "hidden";</script>'
+                '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                '<template><p>Unused draft text</p></template>'
+                '<h2>Bibliography</h2><p>[1] Source A '
+                'https://example.org/a</p></body></html>')
+        passed, errors = self.verify_text(md, html)
+        self.assertTrue(passed, errors)
+
 
 if __name__ == '__main__':
     unittest.main()
