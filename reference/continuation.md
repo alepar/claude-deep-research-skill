@@ -108,7 +108,10 @@ and resume record.
 
 `decide` returns `validate` for unrun final checks and `blocked` for a failed
 check, pending worker, draft dossier, unqualified partial dossier, or
-unqualified open gap. It returns `complete` only when all required workers have
+unqualified open gap. A `critical-error` retrieval stop returns `blocked` even
+when writing remains or all other checks pass. Resolve the failure, record a
+fresh justified stop decision, and rerun affected validation before delivery.
+It returns `complete` only when all required workers have
 successfully joined, every dossier is complete, no open material gap remains,
 and all final checks passed. A budget-limited report with explicit open gaps
 can return `partial` when the checkpoint sets `delivery_status: partial` and
