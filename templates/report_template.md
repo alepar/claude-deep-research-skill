@@ -61,3 +61,9 @@ Report query attempts, result entries considered before deduplication, distinct
 original documents retrieved, and failed fetch attempts from the persisted logs.
 List failure URLs/reasons and whether recovered or still inaccessible. Mark missing
 accounting unknown/incomplete; snippets and metadata alone are not documents.]
+
+### Retrieval health
+
+[Paste the output of `python scripts/retrieval_health.py --dir [run_folder]`:
+status, failed searches and provider failures, inaccessible and recovered
+documents, and recommended actions.]

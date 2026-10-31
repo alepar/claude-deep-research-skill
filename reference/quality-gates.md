@@ -30,7 +30,8 @@ query attempts, result entries considered, distinct documents read, failed fetch
 attempts, preflight failures, and automatic fallback. Retries are separate attempts;
 document totals deduplicate canonical identity. Do not substitute source counts
 or search snippets for documents read. Missing legacy counters must be disclosed
-as unknown/incomplete. Check worker joins have not duplicated attempt IDs.
+as unknown/incomplete. Check worker joins have not duplicated attempt IDs. Confirm the report contains the
+current `retrieval_health.py` output and that the final reply states its status.
 
 Run these checks on a new layered package:
 

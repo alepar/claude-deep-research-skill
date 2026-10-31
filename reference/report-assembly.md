@@ -103,6 +103,14 @@ documents still inaccessible. Mention partial-document access where material.
 Missing older counters mean unknown/incomplete totals, not zero. These operational
 counts are not measures of recall or a substitute for facet coverage.
 
+At the end of every run, including Quick, run
+`python scripts/retrieval_health.py --dir [run_folder]` and put its Markdown
+output in the final report's Methodology section as the `Retrieval health`
+subsection. Then end the reply to the user with its status line. When the
+status is DEGRADED, also list the inaccessible URLs, the failed searches or
+providers, and the recommended actions, so the user knows where quality is
+reduced and what would fix it. Do not soften or omit a degraded status.
+
 Read dossier summaries first, then inspect underlying evidence for every
 material conclusion used in the final. Reconcile overlapping or conflicting
 dossiers explicitly. The final report gives the direct answer, cross-facet

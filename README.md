@@ -13,11 +13,15 @@ No additional dependencies required for basic usage.
 
 ### Optional: search-cli (multi-provider search)
 
-For aggregated search across Brave, Serper, Exa, Jina, and Firecrawl:
+Rank-fused search across up to 14 providers (Brave, Serper, Exa, Jina, Kagi,
+Tavily, Perplexity, and others), specialist modes (news, academic, scholar,
+reddit, similar, deep), and page extraction with sanctioned routes for papers,
+GitHub, Stack Exchange, Reddit, and more:
 
 ```bash
-brew tap 199-biotechnologies/tap && brew install search-cli
+curl -fsSL https://raw.githubusercontent.com/alepar/search-cli/master/install.sh | sh
 search config set keys.brave YOUR_KEY  # configure at least one provider
+search config check
 ```
 
 ## Usage
@@ -76,9 +80,9 @@ continue from the checkpoint when capacity requires it. With no capacity signal,
 
 | Tool | Priority | Setup |
 |------|----------|-------|
-| search-cli | Preferred; preflight before retrieval | `brew install search-cli` + API keys |
+| search-cli | Preferred; preflight before retrieval | `install.sh` from alepar/search-cli + API keys |
 | Host web search | Automatic fallback on preflight or later CLI failure | Host dependent |
-| Exa MCP | Optional semantic search | MCP config |
+| Host fetch (e.g. WebFetch) | Document fetches; failures retry via `search -m extract` | Host dependent |
 
 Preflight checks CLI availability and supported capabilities, then uses the first
 scoped query as a live probe. Failure triggers fallback automatically, without
@@ -86,6 +90,13 @@ user confirmation. Final reports disclose tools used, preflight/fallback outcome
 query attempts, result entries considered, distinct documents retrieved, and
 retrieval failures. Query and document attempts persist in `queries.jsonl` and
 `retrievals.jsonl`; these counts describe access and effort, not measured recall.
+`python scripts/retrieval_health.py --dir [run_folder]` summarizes every failed
+search, provider failure, and inaccessible document with recommended actions;
+each run includes it in the report and states its status to the user.
+
+In auto-approval modes the host may refuse `search -m extract` calls unless a
+permission rule allows them (for Claude Code, a Bash allow rule for `search *`).
+Refusals are recorded as `permission_denied` and reported, never bypassed.
 
 ## Architecture
 

@@ -4,10 +4,10 @@
 #
 # Optional tools (not Python packages):
 #
-# search-cli — multi-provider search aggregation (Brave, Serper, Exa, Jina, Firecrawl)
-#   Install: brew tap 199-biotechnologies/tap && brew install search-cli
+# search-cli — rank-fused multi-provider search and page extraction
+#   Install: curl -fsSL https://raw.githubusercontent.com/alepar/search-cli/master/install.sh | sh
 #   Config:  search config set keys.[provider] YOUR_KEY
-#   Repo:    https://github.com/199-biotechnologies/search-cli
+#   Repo:    https://github.com/alepar/search-cli
 #
 # weasyprint — PDF generation from HTML reports
 #   Install: pip install weasyprint
