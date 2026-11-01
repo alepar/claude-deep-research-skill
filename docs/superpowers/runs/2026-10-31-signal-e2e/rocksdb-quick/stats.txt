@@ -1,0 +1,9 @@
+provider signal (2 URLs marked relevant, 0 from no logged provider):
+  provider     uniq-rel relevant   prec    $/rel   $/uniq results   urls unique extract
+  brave               0        2  15.4%    0.005        -      20     13      5       1
+  tavily              0        2  12.5%    0.010        -      20     16      4       1
+  exa                 0        1   7.7%    0.014        -      20     13      8       1
+  jina                0        1  10.0%    0.001        -      10     10      0       0
+  kagi                0        1   5.9%    0.024        -      20     17      4       1
+  perplexity          0        1   7.1%    0.006        -      20     14      8       1
+  serper              0        1   6.2%    0.002        -      20     16      3       1
