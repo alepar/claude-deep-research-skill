@@ -19,6 +19,8 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -60,6 +62,51 @@ def read_jsonl(path: str) -> list[dict]:
             if line:
                 rows.append(json.loads(line))
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Provider relevance signal
+# ---------------------------------------------------------------------------
+
+MARK_TIMEOUT_SECS = 5
+
+
+def source_url(run_dir: str, source_id: str) -> str | None:
+    """The registered http(s) URL of a source, if it has one."""
+    for row in read_jsonl(os.path.join(run_dir, 'sources.jsonl')):
+        if row.get('source_id') == source_id:
+            url = row.get('raw_url') or row.get('canonical_locator')
+            if isinstance(url, str) and url.startswith(('http://', 'https://')):
+                return url
+    return None
+
+
+def supports_mark_relevant(search: str) -> bool:
+    """Ask agent-info, never the command itself: an older binary reads
+    `search mark-relevant URL` as a query and runs a paid web search."""
+    info = subprocess.run(
+        [search, 'agent-info'], capture_output=True, text=True,
+        stdin=subprocess.DEVNULL, timeout=MARK_TIMEOUT_SECS,
+    )
+    return 'mark-relevant' in json.loads(info.stdout).get('commands', [])
+
+
+def mark_source_relevant(run_dir: str, source_id: str) -> None:
+    """Tell the search CLI this source was useful, whichever tool fetched it,
+    so `search stats` can credit the providers that returned it. Best effort:
+    provider monitoring must never affect a research run, so every failure is
+    swallowed."""
+    try:
+        search = shutil.which('search')
+        url = source_url(run_dir, source_id)
+        if search and url and supports_mark_relevant(search):
+            subprocess.run(
+                [search, 'mark-relevant', url],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=MARK_TIMEOUT_SECS,
+            )
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +177,11 @@ def cmd_add(args: argparse.Namespace) -> None:
         'status': 'added',
         'evidence_id': evidence_id,
         'source_id': source_id,
-    }))
+    }), flush=True)
+    # The first retained passage is what makes a document useful; more
+    # passages from it are not a new signal.
+    if not any(row.get('source_id') == source_id for row in existing):
+        mark_source_relevant(args.dir, source_id)
 
 
 def cmd_list(args: argparse.Namespace) -> None:

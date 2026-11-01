@@ -56,6 +56,10 @@ For an active high-priority facet, including each contested position, `verify_co
  "retrieval_id": "R7", "capture_tool": "search -m extract", "verbatim": true}
 ```
 
+### Provider signal
+
+When `evidence_store.py add` stores the first passage of a registered source, it calls `search mark-relevant` with the source's URL, whichever tool fetched the document, so `search stats` can credit the providers that returned it. This needs no action: register the source before adding its evidence. Workers do not call it, because only the lead registers evidence. The call is skipped when `search` is missing or `search agent-info` does not list the command, and any failure is ignored. Do not run `search mark-relevant` by hand on a version that does not list it: an older binary treats it as a web query.
+
 ### Accounting
 
 The lead and workers retain accounting alongside evidence. Each executed search attempt, including failed queries and same-text retries, gets one unique `query_id` in `queries.jsonl` with the normal facet/round fields plus `status` (`success`, `partial`, or `failed`), `error` (null or a sanitized failure reason), `error_category` (null or a category below), `provider_failures` (component-provider failures, possibly empty), and `results_considered` (a nonnegative integer, or null if unavailable). Count result entries actually inspected for relevance before deduplication, including duplicate entries and rejected results. Do not count a provider's estimated total hits or uninspected returned entries. A provider aggregate is one query attempt at the tool boundary; record component-provider failures in `provider_failures` and `error` rather than inventing unseen calls. Local availability/help checks are not search queries.
