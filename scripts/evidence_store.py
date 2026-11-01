@@ -113,6 +113,18 @@ def cmd_add(args: argparse.Namespace) -> None:
         'evidence_type': evidence_type,
         'captured_at': datetime.now(timezone.utc).isoformat(),
     }
+    # Quote provenance: which retrieval attempt and tool produced the text, and
+    # whether it is copied from raw page text (search -m extract) or from a
+    # summarizing fetch tool. Required for high-priority facets by
+    # verify_coverage.py; absent fields stay absent for legacy callers.
+    for field in ('retrieval_id', 'capture_tool'):
+        if data.get(field) is not None:
+            row[field] = data[field]
+    if 'verbatim' in data:
+        if not isinstance(data['verbatim'], bool):
+            print(json.dumps({'error': 'verbatim must be true or false'}), file=sys.stderr)
+            sys.exit(1)
+        row['verbatim'] = data['verbatim']
     append_jsonl(evidence_path, row)
     print(json.dumps({
         'status': 'added',
@@ -178,7 +190,8 @@ def main() -> None:
 
     # add
     p_add = sub.add_parser('add', help='Append evidence row')
-    p_add.add_argument('--json', required=True, help='JSON with source_id, quote, locator, evidence_type, retrieval_query')
+    p_add.add_argument('--json', required=True, help='JSON with source_id, quote, locator, evidence_type, retrieval_query, '
+                       'and quote provenance: retrieval_id, capture_tool, verbatim')
     p_add.add_argument('--dir', required=True, help='Run directory containing evidence.jsonl')
 
     # list

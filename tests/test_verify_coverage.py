@@ -28,6 +28,14 @@ def write_jsonl(path, rows):
             f.write(json.dumps(row) + '\n')
 
 
+def retrieval(rid, tool, url, status='retrieved', category=None):
+    failed = status == 'failed'
+    return {'retrieval_id': rid, 'query_id': None, 'tool': tool, 'url': url,
+            'document_key': url, 'status': status,
+            'content_scope': 'none' if failed else 'full',
+            'error': category if failed else None, 'error_category': category}
+
+
 class TestVerifyCoverage(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -79,7 +87,9 @@ class TestVerifyCoverage(unittest.TestCase):
                                        (3, 'counterevidence', []))
         ]
         self.sources = [{'source_id': SOURCE, 'canonical_locator': 'https://example.org/study'}]
-        self.evidence = [{'evidence_id': EVIDENCE, 'source_id': SOURCE}]
+        self.evidence = [{'evidence_id': EVIDENCE, 'source_id': SOURCE, 'retrieval_id': 'R1',
+                          'capture_tool': 'search -m extract', 'verbatim': True}]
+        self.retrievals = [retrieval('R1', 'search -m extract', 'https://example.org/study')]
         self.manifest['retrieval_stop'] = copy.deepcopy(self.stop)
         self.save()
 
@@ -93,6 +103,7 @@ class TestVerifyCoverage(unittest.TestCase):
         write_jsonl(os.path.join(self.dir, 'queries.jsonl'), self.queries)
         write_jsonl(os.path.join(self.dir, 'sources.jsonl'), self.sources)
         write_jsonl(os.path.join(self.dir, 'evidence.jsonl'), self.evidence)
+        write_jsonl(os.path.join(self.dir, 'retrievals.jsonl'), self.retrievals)
 
     def check(self, require_stop=False):
         self.save()
@@ -130,6 +141,35 @@ class TestVerifyCoverage(unittest.TestCase):
         self.coverage['facets'][0]['query_ids'].remove('Q0')
         self.queries = [q for q in self.queries if q['query_id'] != 'Q0']
         self.assert_invalid('counterevidence')
+
+    def test_high_priority_quote_from_webfetch_is_rejected(self):
+        self.evidence[0].update(retrieval_id='R2', capture_tool='WebFetch')
+        self.retrievals.append(retrieval('R2', 'WebFetch', 'https://example.org/study'))
+        self.assert_invalid('must be quoted from search -m extract')
+
+    def test_high_priority_quote_needs_provenance(self):
+        for field in ('retrieval_id', 'capture_tool', 'verbatim'):
+            del self.evidence[0][field]
+        self.assert_invalid('lacks quote provenance')
+
+    def test_non_verbatim_fallback_requires_failed_extract(self):
+        self.evidence[0].update(retrieval_id='R2', capture_tool='WebFetch', verbatim=False)
+        self.retrievals = [retrieval('R2', 'WebFetch', 'https://example.org/study')]
+        self.assert_invalid('without a failed search -m extract attempt')
+        self.retrievals.insert(0, retrieval('R1', 'search -m extract', 'https://example.org/study',
+                                            status='failed', category='blocked'))
+        code, result = self.check()
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_supporting_facet_quote_may_come_from_webfetch(self):
+        self.coverage['facets'][0]['priority'] = 'supporting'
+        self.coverage['initial_facets'][0]['priority'] = 'supporting'
+        for completed in self.coverage['completed_rounds']:
+            completed['target_high_priority_facet_ids'] = []
+        self.evidence[0].update(retrieval_id='R2', capture_tool='WebFetch', verbatim=False)
+        self.retrievals = [retrieval('R2', 'WebFetch', 'https://example.org/study')]
+        code, result = self.check()
+        self.assertNotIn('quote', ' '.join(result['errors']))
 
     def test_literal_query_can_record_counterevidence_transition(self):
         self.queries[0]['family'] = 'literal'

@@ -48,7 +48,11 @@ class LayeredPackageEndToEnd(unittest.TestCase):
             'The first approach improved access; reliability was not measured.')
         self.base.evidence.append({'evidence_id': EVIDENCE_B, 'source_id': SOURCE_B,
                                    'quote': ('The second approach improved reliability; '
-                                             'access was not measured.')})
+                                             'access was not measured.'),
+                                   'retrieval_id': 'R2', 'capture_tool': 'search -m extract',
+                                   'verbatim': True})
+        self.base.retrievals.append(coverage_fixture.retrieval(
+            'R2', 'search -m extract', 'https://example.org/second'))
         for query in self.base.queries:
             query['facet_ids'].append('F2')
         # The base fixture intentionally shares its result list across fields.

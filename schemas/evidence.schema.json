@@ -37,6 +37,20 @@
     "captured_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "retrieval_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "retrievals.jsonl attempt whose document text this quote was copied from"
+    },
+    "capture_tool": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tool that produced the quote text, e.g. 'search -m extract' or 'WebFetch'"
+    },
+    "verbatim": {
+      "type": "boolean",
+      "description": "true when copied from raw page text (search -m extract); false when taken from a summarizing fetch tool such as WebFetch. High-priority facets require true unless extract failed for the document."
     }
   },
   "additionalProperties": false

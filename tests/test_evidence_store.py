@@ -92,6 +92,28 @@ class TestAddEvidence(unittest.TestCase):
         self.assertEqual(out2['status'], 'added')
 
 
+class TestQuoteProvenance(unittest.TestCase):
+    def test_verbatim_flag_and_capture_tool_are_stored(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_es('init', '--dir', d)
+            run_es('add', '--dir', d, '--json', json.dumps({
+                'source_id': 'a' * 16, 'quote': 'Raw extract text.', 'locator': 'p. 2',
+                'retrieval_id': 'R1', 'capture_tool': 'search -m extract', 'verbatim': True}))
+            run_es('add', '--dir', d, '--json', json.dumps({
+                'source_id': 'b' * 16, 'quote': 'Summarized text.', 'locator': None,
+                'retrieval_id': 'R2', 'capture_tool': 'WebFetch', 'verbatim': False}))
+            rows = run_es('export', '--dir', d)
+            self.assertEqual([(r['capture_tool'], r['verbatim'], r['retrieval_id']) for r in rows],
+                             [('search -m extract', True, 'R1'), ('WebFetch', False, 'R2')])
+
+    def test_non_boolean_verbatim_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_es('init', '--dir', d)
+            with self.assertRaises(RuntimeError):
+                run_es('add', '--dir', d, '--json', json.dumps({
+                    'source_id': 'a' * 16, 'quote': 'x', 'verbatim': 'yes'}))
+
+
 class TestListAndExport(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()

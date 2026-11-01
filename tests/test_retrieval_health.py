@@ -90,6 +90,52 @@ class RetrievalHealthTest(unittest.TestCase):
             self.assertEqual(report['status'], 'degraded')
             self.assertIn('search not installed', render_markdown(report))
 
+    def test_non_verbatim_high_priority_quote_degrades(self):
+        with tempfile.TemporaryDirectory() as d:
+            url = 'https://walled.example/p'
+            write_run(d, OK_PREFLIGHT, [], [
+                {'retrieval_id': 'r1', 'tool': 'search -m extract', 'url': url,
+                 'document_key': url, 'status': 'failed', 'content_scope': 'none',
+                 'error': 'blocked', 'error_category': 'blocked'},
+                {'retrieval_id': 'r2', 'tool': 'WebFetch', 'url': url, 'document_key': url,
+                 'status': 'retrieved', 'content_scope': 'full', 'error': None},
+                {'retrieval_id': 'r3', 'tool': 'search -m extract', 'url': 'https://ok.example',
+                 'document_key': 'https://ok.example', 'status': 'retrieved',
+                 'content_scope': 'full', 'error': None}])
+            (Path(d) / 'coverage.json').write_text(json.dumps({'facets': [
+                {'id': 'F1', 'priority': 'high', 'active': True, 'evidence_ids': ['e1', 'e2'],
+                 'contested_positions': []},
+                {'id': 'F2', 'priority': 'supporting', 'active': True, 'evidence_ids': ['e3'],
+                 'contested_positions': []}]}))
+            (Path(d) / 'evidence.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in [
+                {'evidence_id': 'e1', 'retrieval_id': 'r2', 'capture_tool': 'WebFetch',
+                 'verbatim': False},
+                {'evidence_id': 'e2', 'retrieval_id': 'r3', 'capture_tool': 'search -m extract',
+                 'verbatim': True},
+                {'evidence_id': 'e3', 'retrieval_id': 'r2', 'capture_tool': 'WebFetch',
+                 'verbatim': False}]))
+            report = analyze(d)
+            self.assertEqual(report['status'], 'degraded')
+            self.assertEqual(report['quotes']['high_priority_evidence'], 2)
+            self.assertEqual([e['evidence_id'] for e in report['quotes']['non_verbatim']], ['e1'])
+            self.assertIn('non_verbatim_quote', {a['category'] for a in report['actions']})
+            text = render_markdown(report)
+            self.assertIn('1 verbatim from search -m extract, 1 non-verbatim fallback', text)
+            self.assertIn(f'| e1 | F1 | WebFetch | {url} |', text)
+
+    def test_verbatim_high_priority_quotes_stay_ok(self):
+        with tempfile.TemporaryDirectory() as d:
+            write_run(d, OK_PREFLIGHT, [], [
+                {'retrieval_id': 'r1', 'tool': 'search -m extract', 'url': 'https://a.example',
+                 'document_key': 'https://a.example', 'status': 'retrieved',
+                 'content_scope': 'full', 'error': None}])
+            (Path(d) / 'coverage.json').write_text(json.dumps({'facets': [
+                {'id': 'F1', 'priority': 'high', 'active': True, 'evidence_ids': ['e1']}]}))
+            (Path(d) / 'evidence.jsonl').write_text(json.dumps(
+                {'evidence_id': 'e1', 'retrieval_id': 'r1', 'capture_tool': 'search -m extract',
+                 'verbatim': True}) + '\n')
+            self.assertEqual(analyze(d)['status'], 'ok')
+
     def test_infer_category(self):
         self.assertEqual(infer_category('blocked', 'whatever'), 'blocked')
         self.assertEqual(infer_category(None, 'no_sanctioned_route for linkedin'), 'no_sanctioned_route')

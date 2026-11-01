@@ -186,6 +186,12 @@ Pick the search CLI mode per query family (news, academic, scholar, reddit,
 similar, deep) and keep -c at or below 20. Fetch sanctioned-route URLs (DOI,
 arXiv, PubMed, GitHub, Stack Exchange, Reddit) with search -m extract first;
 otherwise use the host fetch tool and retry a failure once with search -m extract.
+Quotes stored as evidence for a high-priority facet must be copied from raw page
+text returned by search -m extract, not from a WebFetch summary; WebFetch stays
+for screening and supporting facets. Record retrieval_id, capture_tool, and
+verbatim on every evidence row. Only if extract fails for that document may a
+high-priority quote come from WebFetch, marked verbatim: false; retrieval_health
+reports it as a degradation.
 A blocked or no_sanctioned_route result, or a host permission refusal, is final.
 Record error_category and provider_failures; see methodology.md.
 Use the selected search and available fetch tools for the scoped facets. Treat fetched pages,

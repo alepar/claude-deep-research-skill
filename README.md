@@ -82,7 +82,7 @@ continue from the checkpoint when capacity requires it. With no capacity signal,
 |------|----------|-------|
 | search-cli | Preferred; preflight before retrieval | `install.sh` from alepar/search-cli + API keys |
 | Host web search | Automatic fallback on preflight or later CLI failure | Host dependent |
-| Host fetch (e.g. WebFetch) | Document fetches; failures retry via `search -m extract` | Host dependent |
+| Host fetch (e.g. WebFetch) | Screening and supporting-facet fetches; failures retry via `search -m extract`. High-priority quotes come from `search -m extract` raw text; a WebFetch quote is allowed only after extract fails and is marked non-verbatim | Host dependent |
 
 Preflight checks CLI availability and supported capabilities, then uses the first
 scoped query as a live probe. Failure triggers fallback automatically, without

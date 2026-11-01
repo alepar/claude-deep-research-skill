@@ -2,8 +2,9 @@
 """
 Retrieval health report for a deep-research run.
 
-Reads run_manifest.json, queries.jsonl, and retrievals.jsonl from a run folder
-and summarizes every search or fetch failure: which queries and URLs failed,
+Reads run_manifest.json, queries.jsonl, retrievals.jsonl, and (when present)
+coverage.json and evidence.jsonl from a run folder and summarizes every search
+or fetch failure: which queries and URLs failed,
 why, whether a later attempt recovered the document, and what the user can do
 about it. The output tells the reader whether retrieval quality was degraded.
 
@@ -46,6 +47,7 @@ ACTIONS = {
     'not_found': 'The URL is dead or moved: find a current or archived copy.',
     'empty': 'The page returned no usable text (empty or script-only shell): try another copy of the document.',
     'other': 'Inspect the recorded error text.',
+    'non_verbatim_quote': 'search -m extract failed, so these high-priority quotes come from a summarizing fetch tool and may not be word-for-word: check them against the original document, or supply the document so they can be quoted verbatim.',
 }
 
 _INFER = (
@@ -100,10 +102,52 @@ def read_manifest(directory):
         return json.load(f)
 
 
+def high_priority_evidence(coverage):
+    """Map evidence ID -> facet ID for active high-priority facets."""
+    result = {}
+    for facet in (coverage or {}).get('facets') or []:
+        if not isinstance(facet, dict) or not facet.get('active') or facet.get('priority') != 'high':
+            continue
+        ids = list(facet.get('evidence_ids') or [])
+        for position in facet.get('contested_positions') or []:
+            if isinstance(position, dict):
+                ids.extend(position.get('evidence_ids') or [])
+        for eid in ids:
+            result.setdefault(eid, facet.get('id'))
+    return result
+
+
+def analyze_quotes(directory, paths, retrievals):
+    """Report high-priority quotes that are not verbatim extract text."""
+    coverage_path = os.path.join(directory, paths.get('coverage', 'coverage.json'))
+    evidence = read_jsonl(os.path.join(directory, paths.get('evidence', 'evidence.jsonl')))
+    if not os.path.exists(coverage_path) or evidence is None:
+        return None
+    with open(coverage_path) as f:
+        high = high_priority_evidence(json.load(f))
+    by_retrieval = {r.get('retrieval_id'): r for r in retrievals or []}
+    non_verbatim, unknown = [], []
+    for row in evidence:
+        eid = row.get('evidence_id')
+        if eid not in high:
+            continue
+        attempt = by_retrieval.get(row.get('retrieval_id')) or {}
+        entry = {'evidence_id': eid, 'facet_id': high[eid],
+                 'capture_tool': row.get('capture_tool'),
+                 'document_key': attempt.get('document_key') or attempt.get('url')}
+        if row.get('verbatim') is False:
+            non_verbatim.append(entry)
+        elif row.get('verbatim') is not True:
+            unknown.append(entry)
+    return {'high_priority_evidence': sum(1 for r in evidence if r.get('evidence_id') in high),
+            'non_verbatim': non_verbatim, 'provenance_unknown': unknown}
+
+
 def analyze(directory):
     manifest = read_manifest(directory)
     queries = read_jsonl(os.path.join(directory, 'queries.jsonl'))
     retrievals = read_jsonl(os.path.join(directory, 'retrievals.jsonl'))
+    paths = (manifest or {}).get('artifact_paths') or {}
 
     report = {
         'status': 'ok',
@@ -112,6 +156,7 @@ def analyze(directory):
         'queries': None,
         'provider_failures': [],
         'fetches': None,
+        'quotes': None,
         'actions': [],
     }
     categories = OrderedDict()  # category -> list of affected labels
@@ -193,6 +238,18 @@ def analyze(directory):
         if inaccessible:
             report['reasons'].append(f'{len(inaccessible)} document(s) still inaccessible')
 
+    quotes = analyze_quotes(directory, paths, retrievals)
+    report['quotes'] = quotes
+    if quotes:
+        if quotes['non_verbatim']:
+            report['reasons'].append(
+                f"{len(quotes['non_verbatim'])} high-priority quote(s) not verbatim (extract failed)")
+            for entry in quotes['non_verbatim']:
+                note('non_verbatim_quote', f"evidence {entry['evidence_id']}")
+        if quotes['provenance_unknown']:
+            report['reasons'].append(
+                f"{len(quotes['provenance_unknown'])} high-priority quote(s) lack verbatim provenance")
+
     for cat, labels in categories.items():
         report['actions'].append({'category': cat, 'action': ACTIONS[cat],
                                   'affected': sorted(set(labels))})
@@ -234,6 +291,14 @@ def render_markdown(report):
                    f"{len(f['recovered'])} recovered, {len(f['inaccessible'])} still inaccessible")
         if f['partial_only']:
             out.append(f"- Partial text only: {len(f['partial_only'])} document(s)")
+    qt = report.get('quotes')
+    if qt:
+        verbatim = (qt['high_priority_evidence'] - len(qt['non_verbatim'])
+                    - len(qt['provenance_unknown']))
+        out.append(f"- High-priority quotes: {qt['high_priority_evidence']} "
+                   f"({verbatim} verbatim from search -m extract, "
+                   f"{len(qt['non_verbatim'])} non-verbatim fallback, "
+                   f"{len(qt['provenance_unknown'])} provenance unknown)")
     out.append('')
 
     if report['provider_failures']:
@@ -263,6 +328,13 @@ def render_markdown(report):
             failed_tools = ', '.join(f"{a['tool'] or '?'} ({a['category']})" for a in d['failed_attempts'])
             out.append(f"| {_cell(d['failed_attempts'][0]['url'] or d['document_key'])} | "
                        f"{_cell(failed_tools)} | {_cell(d['recovered_by'])} |")
+        out.append('')
+    if qt and qt['non_verbatim']:
+        out += ['Non-verbatim high-priority quotes (search -m extract failed):', '',
+                '| Evidence | Facet | Quoted via | Document |', '|---|---|---|---|']
+        out += [f"| {_cell(e['evidence_id'])} | {_cell(e['facet_id'])} | "
+                f"{_cell(e['capture_tool'])} | {_cell(e['document_key'])} |"
+                for e in qt['non_verbatim']]
         out.append('')
     if report['actions']:
         out += ['Recommended actions:', '']

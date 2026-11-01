@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 
 
@@ -65,6 +66,53 @@ def check_references(values, known, label, errors):
             errors.append(f'{label} references unknown {"evidence" if "evidence" in label else "source" if "source" in label else "query" if "query" in label else "facet"}: {value}')
 
 
+def is_extract_tool(tool):
+    """True for the search CLI extract route (e.g. 'search -m extract')."""
+    return isinstance(tool, str) and 'search' in tool and re.search(r'\bextract\b', tool) is not None
+
+
+def check_quote_provenance(facets, evidence, retrievals, errors):
+    """High-priority evidence must be copied from raw page text via search -m extract.
+
+    A non-verbatim quote (e.g. from a WebFetch summary) is allowed only when a
+    search -m extract attempt for the same document failed.
+    """
+    by_id = {r.get('retrieval_id'): r for r in retrievals if nonempty(r.get('retrieval_id'))}
+    high = {}
+    for fid, facet in facets.items():
+        if not facet.get('active') or facet.get('priority') != 'high':
+            continue
+        ids = list(facet.get('evidence_ids') or [])
+        for position in facet.get('contested_positions') or []:
+            if isinstance(position, dict):
+                ids.extend(position.get('evidence_ids') or [])
+        for eid in ids:
+            high.setdefault(eid, fid)
+    for eid, fid in high.items():
+        row = evidence.get(eid)
+        if row is None:
+            continue  # unknown evidence is reported by check_references
+        verbatim, tool, rid = row.get('verbatim'), row.get('capture_tool'), row.get('retrieval_id')
+        if not isinstance(verbatim, bool) or not nonempty(tool) or rid not in by_id:
+            errors.append(f'high-priority evidence {eid} (facet {fid}) lacks quote provenance: '
+                          'needs retrieval_id in retrievals.jsonl, capture_tool, and verbatim')
+            continue
+        attempt = by_id[rid]
+        if attempt.get('status') != 'retrieved':
+            errors.append(f'high-priority evidence {eid} cites retrieval {rid} that retrieved no text')
+        if attempt.get('tool') != tool:
+            errors.append(f'high-priority evidence {eid} capture_tool differs from retrieval {rid} tool')
+        if verbatim:
+            if not is_extract_tool(tool):
+                errors.append(f'high-priority evidence {eid} (facet {fid}) must be quoted from '
+                              f'search -m extract raw text, not {tool}')
+        elif not any(r.get('document_key') == attempt.get('document_key') and
+                     is_extract_tool(r.get('tool')) and r.get('status') == 'failed'
+                     for r in retrievals):
+            errors.append(f'high-priority evidence {eid} (facet {fid}) is non-verbatim without a '
+                          f'failed search -m extract attempt for {attempt.get("document_key")}')
+
+
 def facet_ready(facet, evidence):
     if not facet.get('active') or facet.get('priority') != 'high':
         return True
@@ -105,6 +153,8 @@ def verify(directory, require_stop=False):
         queries = load_jsonl(os.path.join(directory, paths['queries']))
         sources = load_jsonl(os.path.join(directory, paths.get('sources', 'sources.jsonl')))
         evidence_rows = load_jsonl(os.path.join(directory, paths.get('evidence', 'evidence.jsonl')))
+        retrievals_path = os.path.join(directory, paths.get('retrievals', 'retrievals.jsonl'))
+        retrievals = load_jsonl(retrievals_path) if os.path.isfile(retrievals_path) else []
     except (OSError, ValueError, KeyError) as exc:
         return {'status': 'invalid', 'errors': [f'artifact read: {exc}']}
     if not isinstance(coverage, dict) or coverage.get('schema_version') != 1:
@@ -197,6 +247,7 @@ def verify(directory, require_stop=False):
                     errors.append(f'facet {fid} contested positions reuse the same evidence')
         elif positions:
             errors.append(f'facet {fid} contested_positions requires contested status')
+    check_quote_provenance(facets, evidence, retrievals, errors)
 
     by_round = {}
     seen_new = set()
