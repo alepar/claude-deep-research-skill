@@ -64,6 +64,26 @@ Screen each result for relevance, deduplicate by canonical source identity, and 
 
 After screening a batch, append a `completed_rounds` entry containing `round`, `query_ids`, `families`, `target_high_priority_facet_ids`, `new_relevant_source_ids`, `material_changes`, and `coverage_ready_after`. Material changes include status, counterevidence, contested position, priority, new essential facet, or scope change, with facet ID and before/after values. A round with a material change is not low yield even if it found no new source.
 
+### Recording a counterevidence check
+
+`verify_coverage.py` rejects an active high-priority facet whose `counterevidence` is `found` or `searched-none-found` unless the same completed round records both:
+
+1. a `material_changes` entry `{"facet_id": <facet>, "kind": "counterevidence", "before": <previous state>, "after": <current state>}`, and
+2. at least one query in that round's `queries.jsonl` rows whose `facet_ids` include the facet and whose `coverage_changed` is `true`.
+
+The query may be in any family; a `literal` query that surfaced contrary material counts. Setting the facet field without the round entry, or recording the transition in a round with no coverage-changing query for that facet, fails. Record the transition in the round whose search actually checked counterevidence:
+
+```json
+{"round": 1, "query_ids": ["Q0", "Q1"], "families": ["counterevidence", "literal"],
+ "target_high_priority_facet_ids": ["F1"], "new_relevant_source_ids": ["<source_id>"],
+ "material_changes": [
+   {"facet_id": "F1", "kind": "status", "before": "unsearched", "after": "supported"},
+   {"facet_id": "F1", "kind": "counterevidence", "before": "unchecked", "after": "searched-none-found"}],
+ "coverage_ready_after": true}
+```
+
+with, in `queries.jsonl`, `{"query_id": "Q0", "round": 1, "facet_ids": ["F1"], "family": "counterevidence", "coverage_changed": true, ...}`. A later change of state (for example `searched-none-found` to `found`) is another counterevidence material change in the round whose query found it; the facet's current state must equal the last recorded `after`.
+
 Choose follow-ups from the most consequential open gap: unsearched high-priority facet, weak claim, contradictory evidence, unchecked counterargument, missing source type, or new in-scope issue. Log zero-yield attempts and change family or provider when useful. Keep every follow-up tied to the original question. Seek primary and independent material, relevant geography and recency, and opposing positions where the topic warrants them. Credibility scores and source totals guide follow-ups; neither is a stop gate.
 
 ## Retrieval stop

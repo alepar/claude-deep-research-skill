@@ -196,6 +196,11 @@ in queries.jsonl. Screen and deduplicate sources, persist direct passages with
 locators in evidence.jsonl, and update coverage.json after each completed round.
 Record completed_rounds with query IDs, families, target high-priority facets,
 new relevant source IDs, material changes, and coverage_ready_after.
+When a high-priority facet's counterevidence becomes found or
+searched-none-found, the same round must record a material change
+{facet_id, kind: "counterevidence", before, after: <state>} and include a query
+whose facet_ids contain the facet with coverage_changed: true; otherwise
+verify_coverage.py rejects the facet (see methodology.md).
 A vocabulary probe may suggest search terms but cannot be cited as evidence.
 
 For independent facets, assign bounded retrieval work with facet IDs, inputs,
