@@ -1,0 +1,3 @@
+{"claim_id": "63d5e68c05cd7117", "digest": "6205783e09012aaa", "verdict": "supported", "reason": "The -# passage states levels [1-19] with default 3, exactly as claimed.", "model": "claude-sonnet-5-5"}
+{"claim_id": "36f7acac017cc3aa", "digest": "b2d852817a32c762", "verdict": "supported", "reason": "The --ultra passage says levels 20+ (max 22), using a lot more memory, and decompression also needs more memory.", "model": "claude-sonnet-5-5"}
+{"claim_id": "35f3d56c473632f8", "digest": "895ece209a8db156", "verdict": "supported", "reason": "The --fast passage gives ultra-fast levels, a ratio-for-speed tradeoff, and a default of 1. Passages place the levels below the normal range only implicitly.", "model": "claude-sonnet-5-5"}

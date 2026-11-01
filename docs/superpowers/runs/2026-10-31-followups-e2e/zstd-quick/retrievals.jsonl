@@ -1,0 +1,2 @@
+{"retrieval_id": "R1", "query_id": "Q2", "tool": "search -m extract", "url": "https://github.com/facebook/zstd/blob/dev/programs/zstd.1.md", "document_key": "https://github.com/facebook/zstd/blob/dev/programs/zstd.1.md", "status": "retrieved", "content_scope": "full", "error": null, "error_category": null}
+{"retrieval_id": "R2", "query_id": "Q1", "tool": "WebFetch", "url": "https://man.archlinux.org/man/zstd.1.en", "document_key": "https://man.archlinux.org/man/zstd.1.en", "status": "retrieved", "content_scope": "full", "error": null, "error_category": null}
