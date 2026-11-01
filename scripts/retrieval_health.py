@@ -47,6 +47,7 @@ ACTIONS = {
     'not_found': 'The URL is dead or moved: find a current or archived copy.',
     'empty': 'The page returned no usable text (empty or script-only shell): try another copy of the document.',
     'other': 'Inspect the recorded error text.',
+    'claim_judge_unavailable': 'Claims were checked only by the lexical scorer, which misses negation and paraphrase: rerun `verify_claim_support.py prepare` with a mid-tier judge model (Claude: Sonnet subagent; Codex: gpt-6.1-terra) and verify again.',
     'non_verbatim_quote': 'search -m extract failed, so these high-priority quotes come from a summarizing fetch tool and may not be word-for-word: check them against the original document, or supply the document so they can be quoted verbatim.',
 }
 
@@ -157,6 +158,7 @@ def analyze(directory):
         'provider_failures': [],
         'fetches': None,
         'quotes': None,
+        'claim_support': None,
         'actions': [],
     }
     categories = OrderedDict()  # category -> list of affected labels
@@ -250,6 +252,15 @@ def analyze(directory):
             report['reasons'].append(
                 f"{len(quotes['provenance_unknown'])} high-priority quote(s) lack verbatim provenance")
 
+    support = (manifest or {}).get('claim_support')
+    report['claim_support'] = support
+    if isinstance(support, dict) and support.get('claims_unverified_by_model'):
+        n = support['claims_unverified_by_model']
+        reason = support.get('judge_unavailable_reason') or 'no verdict recorded'
+        report['reasons'].append(f'{n} claim(s) checked by lexical score only, '
+                                 f'unverified by model ({reason})')
+        note('claim_judge_unavailable', f'{n} claim(s)')
+
     for cat, labels in categories.items():
         report['actions'].append({'category': cat, 'action': ACTIONS[cat],
                                   'affected': sorted(set(labels))})
@@ -299,6 +310,15 @@ def render_markdown(report):
                    f"({verbatim} verbatim from search -m extract, "
                    f"{len(qt['non_verbatim'])} non-verbatim fallback, "
                    f"{len(qt['provenance_unknown'])} provenance unknown)")
+    cs = report.get('claim_support')
+    if isinstance(cs, dict):
+        models = ', '.join(cs.get('judge_models') or []) or 'none'
+        line = (f"- Claim support check: {cs.get('method')}; "
+                f"{cs.get('claims_judged_by_model', 0)} claim(s) judged by model ({models}), "
+                f"{cs.get('claims_unverified_by_model', 0)} unverified by model")
+        if cs.get('judge_unavailable_reason'):
+            line += f" - judge unavailable: {cs['judge_unavailable_reason']}"
+        out.append(line)
     out.append('')
 
     if report['provider_failures']:

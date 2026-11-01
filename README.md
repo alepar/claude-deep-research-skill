@@ -73,7 +73,7 @@ continue from the checkpoint when capacity requires it. With no capacity signal,
 - Final synthesis sized to the decision and supported by linked evidence dossiers
 - Full bibliography with URLs, no placeholders
 - Structural retrieval check: `python scripts/verify_coverage.py --dir [run_folder]`; this does not judge source relevance or measure recall
-- Package checks: `validate_report.py`, `validate_report_package.py`, and applicable citation and claim-support checks
+- Package checks: `validate_report.py`, `validate_report_package.py`, and applicable citation and claim-support checks; claim support is judged per claim by a mid-tier model (Claude: Sonnet subagent; Codex: `gpt-6.1-terra`), with a disclosed lexical fallback when no judge can run
 - Repair the failing artifact and rerun the affected check; ask for input only if a trustworthy answer cannot be produced
 
 ## Search Tools

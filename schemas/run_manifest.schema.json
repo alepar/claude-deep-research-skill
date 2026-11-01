@@ -107,6 +107,20 @@
       },
       "additionalProperties": false
     },
+    "claim_support": {
+      "type": ["object", "null"],
+      "description": "Written by verify_claim_support.py verify; read by retrieval_health.py",
+      "properties": {
+        "method": { "enum": ["model", "lexical-fallback", "mixed", "none"] },
+        "judge_models": { "type": "array", "items": { "type": "string" } },
+        "claims_judged_by_model": { "type": "integer", "minimum": 0 },
+        "claims_unverified_by_model": { "type": "integer", "minimum": 0 },
+        "judge_unavailable_reason": { "type": ["string", "null"] },
+        "contradicted": { "type": "integer", "minimum": 0 },
+        "verified_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
     "continuation": {
       "type": ["object", "null"],
       "description": "Populated when resuming a previous run",

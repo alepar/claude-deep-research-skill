@@ -138,6 +138,8 @@ extracts the exact URL.
 
 ```bash
 python scripts/verify_coverage.py --dir [run_folder] --require-stop
+python scripts/verify_claim_support.py prepare --dir [run_folder]
+# judge each batch with a mid-tier model (see methodology.md#claim-support-judge)
 python scripts/verify_claim_support.py verify --dir [run_folder] --strict
 python scripts/validate_report_package.py --dir [run_folder] --delivery
 python scripts/verify_citations.py --report [final_report_path]
@@ -146,8 +148,9 @@ python scripts/verify_citations.py --report [final_report_path]
 Run the relevant HTML/PDF check only when that format was requested. The
 package validator checks facet markers, dossier links, declared IDs, visible
 citations, and bibliography against the canonical record; it cannot establish
-that prose is semantically entailed by evidence. Review that question directly
-for material claims and contradictions. Repair a failing artifact and rerun
+that prose is semantically entailed by evidence. The claim judge's per-claim
+verdicts cover that question; still review material claims and contradictions
+directly, especially any judged partial. Repair a failing artifact and rerun
 the affected check; widen validation only when the repair can affect another
 check. If evidence remains insufficient, remove or qualify the claim or reopen
 retrieval. A budget-limited package can be delivered with explicit open gaps

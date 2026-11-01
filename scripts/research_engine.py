@@ -233,7 +233,12 @@ run verify_coverage.py. Source totals and credibility scores are diagnostics.
 """,
             ResearchPhase.TRIANGULATE: """# TRIANGULATE
 Link material claims to canonical evidence and independent source IDs. Record
-single-source uncertainty and conflicting positions. If an essential in-scope
+single-source uncertainty and conflicting positions. Run
+verify_claim_support.py prepare, have a mid-tier judge (Claude: Agent tool with
+model "sonnet"; Codex: gpt-6.1-terra) label each batch supported, partial,
+unsupported, or contradicted, then verify --strict. The verdict decides
+support; lexical overlap is a pre-signal. With no judge available, pass
+--judge-unavailable REASON and disclose the lexical-only check. If an essential in-scope
 gap appears, reopen retrieval in coverage.json and queries.jsonl and replace the
 old stop after the new round. Keep the final answer within the user's scope.
 """,

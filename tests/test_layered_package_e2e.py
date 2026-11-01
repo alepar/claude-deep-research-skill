@@ -26,6 +26,19 @@ def marker(claim, evidence, source):
     return f'<!-- claim: {claim}; evidence: {evidence}; source: {source} -->'
 
 
+def judge_all_supported(path):
+    """Stand-in for the mid-tier judge subagent: label every prepared claim supported."""
+    prepared = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'verify_claim_support.py'),
+                               'prepare', '--dir', str(path)],
+                              capture_output=True, text=True, check=True)
+    for batch in json.loads(prepared.stdout)['batches']:
+        items = json.loads(Path(batch['path']).read_text())['items']
+        Path(batch['output_path']).write_text(''.join(
+            json.dumps({'claim_id': item['claim_id'], 'digest': item['digest'],
+                        'verdict': 'supported', 'reason': 'passage states it',
+                        'model': 'test-judge'}) + '\n' for item in items))
+
+
 class LayeredPackageEndToEnd(unittest.TestCase):
     def setUp(self):
         # The coverage fixture starts with an initialized run and a valid stop.
@@ -136,6 +149,8 @@ class LayeredPackageEndToEnd(unittest.TestCase):
             '[2] [Second study](https://example.org/second)\n')
 
     def run_script(self, name, *args):
+        if name == 'verify_claim_support.py' and args[:1] == ('verify',):
+            judge_all_supported(self.path)
         return subprocess.run([sys.executable, str(ROOT / 'scripts' / name), *args],
                               capture_output=True, text=True)
 
