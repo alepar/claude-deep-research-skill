@@ -12,7 +12,8 @@
     "document_key": { "type": "string", "minLength": 1 },
     "status": { "enum": ["retrieved", "failed"] },
     "content_scope": { "enum": ["full", "partial", "none"] },
-    "error": { "type": ["string", "null"] }
+    "error": { "type": ["string", "null"] },
+    "verbatim": { "type": "boolean", "description": "Copied from extra.verbatim of a search -m extract result. false means the text is a paraphrase, not the document's own words." }
   },
   "allOf": [
     {

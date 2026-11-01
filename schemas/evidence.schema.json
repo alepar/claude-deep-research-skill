@@ -50,7 +50,7 @@
     },
     "verbatim": {
       "type": "boolean",
-      "description": "true when copied from raw page text (search -m extract); false when taken from a summarizing fetch tool such as WebFetch. High-priority facets require true unless extract failed for the document."
+      "description": "true when copied from raw page text (search -m extract); false when taken from a summarizing fetch tool such as WebFetch, or from an extract result with extra.verbatim false. High-priority facets require true unless extract failed or returned only a paraphrase for the document."
     }
   },
   "additionalProperties": false

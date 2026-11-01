@@ -154,6 +154,31 @@ class TestQuoteProvenance(unittest.TestCase):
             self.assertEqual([(r['capture_tool'], r['verbatim'], r['retrieval_id']) for r in rows],
                              [('search -m extract', True, 'R1'), ('WebFetch', False, 'R2')])
 
+    def write_paraphrase_attempt(self, d):
+        with open(os.path.join(d, 'retrievals.jsonl'), 'w') as f:
+            f.write(json.dumps({'retrieval_id': 'R1', 'tool': 'search -m extract',
+                                'status': 'retrieved', 'content_scope': 'partial',
+                                'verbatim': False}) + '\n')
+
+    def test_quote_from_a_search_index_copy_lands_non_verbatim(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_es('init', '--dir', d)
+            self.write_paraphrase_attempt(d)
+            run_es('add', '--dir', d, '--json', json.dumps({
+                'source_id': 'a' * 16, 'quote': 'Rewritten thread text.', 'locator': None,
+                'retrieval_id': 'R1', 'capture_tool': 'search -m extract'}))
+            self.assertIs(run_es('export', '--dir', d)[0]['verbatim'], False)
+
+    def test_quote_from_a_search_index_copy_cannot_claim_verbatim(self):
+        with tempfile.TemporaryDirectory() as d:
+            run_es('init', '--dir', d)
+            self.write_paraphrase_attempt(d)
+            with self.assertRaises(RuntimeError):
+                run_es('add', '--dir', d, '--json', json.dumps({
+                    'source_id': 'a' * 16, 'quote': 'Rewritten.', 'retrieval_id': 'R1',
+                    'capture_tool': 'search -m extract', 'verbatim': True}))
+            self.assertEqual(run_es('export', '--dir', d), [])
+
     def test_non_boolean_verbatim_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             run_es('init', '--dir', d)

@@ -123,6 +123,29 @@ class RetrievalHealthTest(unittest.TestCase):
             self.assertIn('1 verbatim from search -m extract, 1 non-verbatim fallback', text)
             self.assertIn(f'| e1 | F1 | WebFetch | {url} |', text)
 
+    def test_search_index_copy_degrades_as_a_non_verbatim_quote(self):
+        with tempfile.TemporaryDirectory() as d:
+            url = 'https://www.reddit.com/r/rust/comments/1jc6gis/'
+            write_run(d, OK_PREFLIGHT, [], [
+                {'retrieval_id': 'r1', 'tool': 'search -m extract', 'url': url,
+                 'document_key': url, 'status': 'retrieved', 'content_scope': 'partial',
+                 'error': None, 'verbatim': False}])
+            (Path(d) / 'coverage.json').write_text(json.dumps({'facets': [
+                {'id': 'F1', 'priority': 'high', 'active': True, 'evidence_ids': ['e1', 'e2'],
+                 'contested_positions': []}]}))
+            # e2 claims verbatim; the attempt it cites says otherwise.
+            (Path(d) / 'evidence.jsonl').write_text(''.join(json.dumps(r) + '\n' for r in [
+                {'evidence_id': 'e1', 'retrieval_id': 'r1', 'capture_tool': 'search -m extract',
+                 'verbatim': False},
+                {'evidence_id': 'e2', 'retrieval_id': 'r1', 'capture_tool': 'search -m extract',
+                 'verbatim': True}]))
+            report = analyze(d)
+            self.assertEqual(report['status'], 'degraded')
+            self.assertEqual([e['evidence_id'] for e in report['quotes']['non_verbatim']],
+                             ['e1', 'e2'])
+            self.assertIn('non_verbatim_quote', {a['category'] for a in report['actions']})
+            self.assertIn('failed or paraphrased', render_markdown(report))
+
     def test_verbatim_high_priority_quotes_stay_ok(self):
         with tempfile.TemporaryDirectory() as d:
             write_run(d, OK_PREFLIGHT, [], [

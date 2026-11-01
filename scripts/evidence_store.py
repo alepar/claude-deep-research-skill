@@ -172,6 +172,16 @@ def cmd_add(args: argparse.Namespace) -> None:
             print(json.dumps({'error': 'verbatim must be true or false'}), file=sys.stderr)
             sys.exit(1)
         row['verbatim'] = data['verbatim']
+    # A paraphrase stays one: an extract attempt logged with verbatim false
+    # (a Reddit search_index copy) marks every quote taken from it.
+    attempt = next((r for r in read_jsonl(os.path.join(args.dir, 'retrievals.jsonl'))
+                    if r.get('retrieval_id') == row.get('retrieval_id')), {})
+    if attempt.get('verbatim') is False:
+        if row.get('verbatim') is True:
+            print(json.dumps({'error': f"retrieval {row['retrieval_id']} returned a paraphrase: "
+                                       'its quotes cannot be verbatim'}), file=sys.stderr)
+            sys.exit(1)
+        row['verbatim'] = False
     append_jsonl(evidence_path, row)
     print(json.dumps({
         'status': 'added',

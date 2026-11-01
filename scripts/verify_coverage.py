@@ -74,8 +74,11 @@ def is_extract_tool(tool):
 def check_quote_provenance(facets, evidence, retrievals, errors):
     """High-priority evidence must be copied from raw page text via search -m extract.
 
-    A non-verbatim quote (e.g. from a WebFetch summary) is allowed only when a
-    search -m extract attempt for the same document failed.
+    A non-verbatim quote (e.g. from a WebFetch summary) is allowed only when
+    search -m extract could not give the document's own words: an attempt
+    failed, or it returned a paraphrase (verbatim: false on the retrieval, as
+    for a Reddit search_index copy). That paraphrase may then be quoted itself,
+    marked non-verbatim.
     """
     by_id = {r.get('retrieval_id'): r for r in retrievals if nonempty(r.get('retrieval_id'))}
     high = {}
@@ -106,11 +109,16 @@ def check_quote_provenance(facets, evidence, retrievals, errors):
             if not is_extract_tool(tool):
                 errors.append(f'high-priority evidence {eid} (facet {fid}) must be quoted from '
                               f'search -m extract raw text, not {tool}')
+            elif attempt.get('verbatim') is False:
+                errors.append(f'high-priority evidence {eid} (facet {fid}) is marked verbatim but '
+                              f'retrieval {rid} returned a paraphrase')
         elif not any(r.get('document_key') == attempt.get('document_key') and
-                     is_extract_tool(r.get('tool')) and r.get('status') == 'failed'
+                     is_extract_tool(r.get('tool')) and
+                     (r.get('status') == 'failed' or r.get('verbatim') is False)
                      for r in retrievals):
             errors.append(f'high-priority evidence {eid} (facet {fid}) is non-verbatim without a '
-                          f'failed search -m extract attempt for {attempt.get("document_key")}')
+                          f'failed or paraphrased search -m extract attempt for '
+                          f'{attempt.get("document_key")}')
 
 
 def facet_ready(facet, evidence):

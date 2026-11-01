@@ -155,11 +155,34 @@ class TestVerifyCoverage(unittest.TestCase):
     def test_non_verbatim_fallback_requires_failed_extract(self):
         self.evidence[0].update(retrieval_id='R2', capture_tool='WebFetch', verbatim=False)
         self.retrievals = [retrieval('R2', 'WebFetch', 'https://example.org/study')]
-        self.assert_invalid('without a failed search -m extract attempt')
+        self.assert_invalid('without a failed or paraphrased search -m extract attempt')
         self.retrievals.insert(0, retrieval('R1', 'search -m extract', 'https://example.org/study',
                                             status='failed', category='blocked'))
         code, result = self.check()
         self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_search_index_copy_is_quotable_as_non_verbatim(self):
+        """A paraphrase from extract is the run's route forward, not a dead end."""
+        self.retrievals[0].update(content_scope='partial', verbatim=False)
+        self.evidence[0]['verbatim'] = False
+        code, result = self.check()
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_search_index_copy_cannot_be_called_verbatim(self):
+        self.retrievals[0].update(content_scope='partial', verbatim=False)
+        self.assert_invalid('returned a paraphrase')
+
+    def test_paraphrased_extract_also_backs_a_webfetch_quote(self):
+        self.retrievals[0].update(content_scope='partial', verbatim=False)
+        self.retrievals.append(retrieval('R2', 'WebFetch', 'https://example.org/study'))
+        self.evidence[0].update(retrieval_id='R2', capture_tool='WebFetch', verbatim=False)
+        code, result = self.check()
+        self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_verbatim_extract_gives_no_licence_for_a_non_verbatim_quote(self):
+        self.retrievals[0]['verbatim'] = True
+        self.evidence[0]['verbatim'] = False
+        self.assert_invalid('without a failed or paraphrased')
 
     def test_supporting_facet_quote_may_come_from_webfetch(self):
         self.coverage['facets'][0]['priority'] = 'supporting'

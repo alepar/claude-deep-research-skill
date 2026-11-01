@@ -48,7 +48,7 @@ ACTIONS = {
     'empty': 'The page returned no usable text (empty or script-only shell): try another copy of the document.',
     'other': 'Inspect the recorded error text.',
     'claim_judge_unavailable': 'Claims were checked only by the lexical scorer, which misses negation and paraphrase: rerun `verify_claim_support.py prepare` with a mid-tier judge model (Claude: Sonnet subagent; Codex: gpt-6.1-terra) and verify again.',
-    'non_verbatim_quote': 'search -m extract failed, so these high-priority quotes come from a summarizing fetch tool and may not be word-for-word: check them against the original document, or supply the document so they can be quoted verbatim.',
+    'non_verbatim_quote': 'search -m extract failed or returned only a paraphrase, so these high-priority quotes may not be word-for-word: check them against the original document, or supply the document so they can be quoted verbatim.',
 }
 
 _INFER = (
@@ -136,7 +136,7 @@ def analyze_quotes(directory, paths, retrievals):
         entry = {'evidence_id': eid, 'facet_id': high[eid],
                  'capture_tool': row.get('capture_tool'),
                  'document_key': attempt.get('document_key') or attempt.get('url')}
-        if row.get('verbatim') is False:
+        if row.get('verbatim') is False or attempt.get('verbatim') is False:
             non_verbatim.append(entry)
         elif row.get('verbatim') is not True:
             unknown.append(entry)
@@ -245,7 +245,7 @@ def analyze(directory):
     if quotes:
         if quotes['non_verbatim']:
             report['reasons'].append(
-                f"{len(quotes['non_verbatim'])} high-priority quote(s) not verbatim (extract failed)")
+                f"{len(quotes['non_verbatim'])} high-priority quote(s) not verbatim (extract failed or paraphrased)")
             for entry in quotes['non_verbatim']:
                 note('non_verbatim_quote', f"evidence {entry['evidence_id']}")
         if quotes['provenance_unknown']:
@@ -350,7 +350,7 @@ def render_markdown(report):
                        f"{_cell(failed_tools)} | {_cell(d['recovered_by'])} |")
         out.append('')
     if qt and qt['non_verbatim']:
-        out += ['Non-verbatim high-priority quotes (search -m extract failed):', '',
+        out += ['Non-verbatim high-priority quotes (search -m extract failed or paraphrased):', '',
                 '| Evidence | Facet | Quoted via | Document |', '|---|---|---|---|']
         out += [f"| {_cell(e['evidence_id'])} | {_cell(e['facet_id'])} | "
                 f"{_cell(e['capture_tool'])} | {_cell(e['document_key'])} |"

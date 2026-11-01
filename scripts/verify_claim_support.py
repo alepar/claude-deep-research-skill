@@ -204,8 +204,9 @@ Verdicts:
   incompatible with the claim.
 For synthesis or recommendation claims, judge whether the passages support the
 factual premises and the inference is reasonable from them.
-A passage with "verbatim": false is a fetch tool's summary rather than page
-text; judge it, and mention it in the reason when the verdict depends on it.
+A passage with "verbatim": false is a fetch tool's summary or an index's
+paraphrase rather than page text; judge it, and mention it in the reason when
+the verdict depends on it.
 
 Write one JSON object per item, one per line, to the output path given in
 this file (overwrite it), with exactly these fields:
