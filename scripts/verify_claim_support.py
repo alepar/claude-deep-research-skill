@@ -310,8 +310,11 @@ def cmd_prepare(args: argparse.Namespace) -> None:
 
     judge_dir = os.path.join(args.dir, JUDGE_DIR)
     os.makedirs(judge_dir, exist_ok=True)
+    # Number past every earlier batch, counting verdict files as well as batch
+    # inputs: a lead that tidied away the inputs must not get batch_001 again
+    # and overwrite the first pass's verdicts.
     existing = [int(m.group(1)) for name in os.listdir(judge_dir)
-                for m in [re.fullmatch(r'batch_(\d+)\.json', name)] if m]
+                for m in [re.fullmatch(r'batch_(\d+)\.(?:json|verdicts\.jsonl)', name)] if m]
     start = max(existing, default=0) + 1
     size = max(1, args.batch_size)
     batches = []

@@ -284,6 +284,17 @@ class TestModelJudge(unittest.TestCase):
         self.assertEqual(batch['items'][0]['passages'][0]['verbatim'], False)
         self.assertEqual(batch['output_path'], prepared['batches'][1]['output_path'])
 
+    def test_rejudge_never_reuses_an_earlier_verdicts_path(self):
+        first = self.prepare('--batch-size', '1')
+        self.judge(first, {'c_neg': 'contradicted', 'c_rev': 'supported'})
+        for batch in first['batches']:
+            os.remove(batch['path'])  # the lead tidies away the batch inputs
+        earlier = {b['output_path'] for b in first['batches']}
+        again = self.prepare('--all', '--batch-size', '1')
+        self.assertEqual(len(again['batches']), 2)
+        self.assertFalse(earlier & {b['output_path'] for b in again['batches']})
+        self.assertEqual(again['batches'][0]['batch'], 'batch_003')
+
     def test_verdicts_persist_per_claim_and_decide_status(self):
         self.judge(self.prepare(), {'c_neg': 'contradicted', 'c_rev': 'supported'})
         out = run_vcs('verify', '--dir', self.tmpdir)
