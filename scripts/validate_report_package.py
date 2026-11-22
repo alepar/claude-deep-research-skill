@@ -31,7 +31,7 @@ def load_jsonl(path):
         return [json.loads(line) for line in handle if line.strip()]
 
 
-def resolved_path(directory, raw, label, errors, package_root=None):
+def resolved_path(directory, raw, label, errors, package_root=None, planned=True):
     """Return a package-local Markdown path, rejecting traversal and symlinks out."""
     root = Path(package_root or directory).resolve()
     if not isinstance(raw, str) or not raw or Path(raw).is_absolute() or \
@@ -43,7 +43,10 @@ def resolved_path(directory, raw, label, errors, package_root=None):
         errors.append(f'{label} must be a relative path inside the package')
         return None
     if not path.is_file():
-        errors.append(f'{label} missing file: {raw}')
+        if planned:
+            errors.append(f'{label} not yet written: {raw} (path is recorded but the file is missing)')
+        else:
+            errors.append(f'{label} missing file: {raw}')
         return None
     return path
 
@@ -302,7 +305,7 @@ def verify(directory, delivery=False):
             target_path = unquote(parsed.path)
             if target_path.endswith('.md'):
                 link_path = resolved_path(final_path.parent, target_path, 'final report link',
-                                          errors, package_root=directory)
+                                          errors, package_root=directory, planned=False)
                 if link_path:
                     linked.add(link_path)
         for did, dossier in dossiers.items():

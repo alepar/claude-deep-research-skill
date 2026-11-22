@@ -63,13 +63,18 @@ The `requested_formats` array records intent, while HTML/PDF files and their
 links are checked separately under [HTML generation](html-generation.md).
 The reporting object also contains dossier rows: stable `id`, relative Markdown `path`, `facet_ids`,
 `source_ids`, `evidence_ids`, `claim_ids`, and `status` (`draft`, `complete`, or
-`partial`). A worker writes only its exclusive dossier path. Give each worker
-the assigned facets and canonical IDs, permitted inputs, a bounded task, and a
-stop condition. Its return names output path, covered facets, source/evidence/
-claim IDs, candidate evidence, unresolved gaps, and status. The lead waits for
-all required returns, registers any new evidence itself, updates coverage, and
-verifies each returned dossier. When subagents are unavailable, perform the
-same tasks sequentially.
+`partial`). Record planned paths when planning; until a file exists, the
+package validator reports it as not yet written. Give each worker the assigned
+facets and canonical IDs, permitted inputs, a bounded task, and a stop
+condition. Its return names covered facets, source/evidence/claim IDs,
+candidate evidence, unresolved gaps, and status. In Claude Code the worker
+returns the dossier as capped text, or a claim-ID outline when it would be too
+long, and the top-level lead writes the file; on other hosts the worker writes
+only its exclusive dossier path and returns it
+([dossier stage](methodology.md#bounded-delegation-and-joining)). The lead
+waits for all required returns, registers any new evidence itself, updates
+coverage, and verifies each dossier. When subagents are unavailable, perform
+the same tasks sequentially.
 
 Use artifact-qualified claim section IDs such as `dossier-a:findings` and
 `final:synthesis`. A factual statement needs an original source citation and
@@ -141,9 +146,16 @@ python scripts/verify_coverage.py --dir [run_folder] --require-stop
 python scripts/verify_claim_support.py prepare --dir [run_folder]
 # judge each batch with a mid-tier model (see methodology.md#claim-support-judge)
 python scripts/verify_claim_support.py verify --dir [run_folder] --strict
-python scripts/validate_report_package.py --dir [run_folder] --delivery
-python scripts/verify_citations.py --report [final_report_path]
+python scripts/retrieval_health.py --dir [run_folder]   # paste into Methodology
+python scripts/finish_delivery.py --dir [run_folder]
 ```
+
+`finish_delivery.py` writes nothing. It fails fast if the final report or a
+dossier is not yet written, then runs `verify_coverage.py --require-stop`,
+`validate_report_package.py --delivery`, `validate_report.py` on the final
+report and each dossier, `verify_citations.py`, and checks that the report
+embeds the current retrieval health status. Run it from the session that wrote
+the report; in Claude Code that is the top-level session.
 
 Run the relevant HTML/PDF check only when that format was requested. The
 package validator checks facet markers, dossier links, declared IDs, visible

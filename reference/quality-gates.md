@@ -39,9 +39,12 @@ Run these checks on a new layered package:
     python scripts/verify_claim_support.py prepare --dir [run_folder]
     # one mid-tier judge per batch (Claude: Sonnet subagent; Codex: gpt-6.1-terra)
     python scripts/verify_claim_support.py verify --dir [run_folder] --strict
-    python scripts/validate_report_package.py --dir [run_folder] --delivery
-    python scripts/validate_report.py --report [final_report_path]
-    python scripts/verify_citations.py --report [final_report_path]
+    python scripts/finish_delivery.py --dir [run_folder]
+
+`finish_delivery.py` runs the read-only checks in order (coverage with stop,
+`validate_report_package.py --delivery`, `validate_report.py` on the final
+report and every dossier, `verify_citations.py`, embedded retrieval health)
+and prints one summary; each script can also be run alone to repair a failure.
 
 The claim judge's verdict, not the lexical score, decides support; see
 [claim support judge](methodology.md#claim-support-judge). A factual claim
@@ -49,7 +52,7 @@ judged unsupported or contradicted fails. If no judge model can run, pass
 `--judge-unavailable "[reason]"` and disclose the lexical-only check, which
 `retrieval_health.py` reports as degraded.
 
-Run validate_report.py on each delivered dossier as well. It performs six
+validate_report.py, run on the final report and each dossier, performs six
 Markdown surface checks: nonempty body and heading, body citations,
 bibliography entries matching those citations, placeholders, truncation
 markers, and local link targets. It accepts compact final reports and facet

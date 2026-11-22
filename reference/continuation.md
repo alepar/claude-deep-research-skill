@@ -63,7 +63,9 @@ Give a continuation worker a capable supported model and effort for the task
 when the host exposes those controls. Provide the original user request, the
 checkpoint path, assigned facet IDs, canonical source/evidence/claim IDs,
 exclusive output path, next task goal, and stop condition. The worker may edit
-only its assigned dossier or report section. It must return the output path,
+only its assigned dossier or report section; in Claude Code it returns that
+prose as capped text and the top-level session writes the file
+([dossier stage](methodology.md#bounded-delegation-and-joining)). It must return the output path,
 completed section IDs, covered facet IDs, source/evidence/claim IDs actually
 used, new candidate evidence, unresolved gaps, and status. Candidate evidence
 returns to the lead for canonical registration and coverage update before use.
