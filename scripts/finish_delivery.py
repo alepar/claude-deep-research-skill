@@ -28,6 +28,9 @@ except ImportError:
 
 
 MAX_DETAIL_LINES = 12
+# Wall-clock seconds for bibliography DOI/URL lookups before the rest are
+# reported as not checked, so an offline or blocked network cannot stall delivery.
+DEFAULT_URL_BUDGET = 120
 
 
 def quiet(function, *args, **kwargs):
@@ -82,12 +85,16 @@ def check_surface(directory, final, dossiers, **_):
     return not errors, errors
 
 
-def check_citations(directory, final, **_):
-    ok, output = quiet(verify_citations.CitationVerifier(final).verify_all)
+def check_citations(directory, final, network=True, budget=None, **_):
+    verifier = verify_citations.CitationVerifier(final, network=network, budget=budget)
+    ok, output = quiet(verifier.verify_all)
+    reach = (f'network checks: {verifier.checked} run, {verifier.not_checked} skipped'
+             + ('' if network else ' (offline)')
+             + (' (time budget spent)' if network and verifier.not_checked else ''))
     if ok:
-        return True, []
+        return True, [reach]
     lines = [line.strip() for line in output.splitlines() if line.strip()]
-    return False, lines[-MAX_DETAIL_LINES:] or ['citation verification failed']
+    return False, (lines[-MAX_DETAIL_LINES + 1:] or ['citation verification failed']) + [reach]
 
 
 def check_health(directory, final, health, **_):
@@ -108,7 +115,7 @@ CHECKS = [
 ]
 
 
-def finish(directory):
+def finish(directory, network=True, budget=DEFAULT_URL_BUDGET):
     """Return (exit code, summary text)."""
     directory = Path(directory)
     out = [f'finish_delivery: {directory}']
@@ -128,7 +135,8 @@ def finish(directory):
         if name == 'health' and health is None:
             ok, details = False, [f'retrieval_health failed: {health_error}']
         else:
-            ok, details = check(directory, final=final, dossiers=dossiers, health=health)
+            ok, details = check(directory, final=final, dossiers=dossiers, health=health,
+                                network=network, budget=budget)
         failed += not ok
         out.append(f'{"PASS" if ok else "FAIL"} {name} ({command})')
         out.extend(f'  - {d}' for d in details[:MAX_DETAIL_LINES])
@@ -146,8 +154,12 @@ def finish(directory):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--dir', required=True, help='Research run directory')
+    parser.add_argument('--offline', action='store_true',
+                        help='Skip bibliography DOI/URL lookups (recorded in the summary)')
+    parser.add_argument('--url-budget', type=float, default=DEFAULT_URL_BUDGET, metavar='SECONDS',
+                        help=f'Seconds for bibliography lookups (default {DEFAULT_URL_BUDGET})')
     args = parser.parse_args(argv)
-    code, summary = finish(args.dir)
+    code, summary = finish(args.dir, network=not args.offline, budget=args.url_budget)
     print(summary, end='')
     return code
 

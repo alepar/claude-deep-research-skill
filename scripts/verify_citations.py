@@ -20,7 +20,7 @@ import sys
 import argparse
 import re
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from urllib import request, error
 from urllib.parse import quote
 import json
@@ -30,9 +30,17 @@ from datetime import datetime
 class CitationVerifier:
     """Verify citations in research report"""
 
-    def __init__(self, report_path: Path, strict_mode: bool = False):
+    def __init__(self, report_path: Path, strict_mode: bool = False,
+                 network: bool = True, budget: Optional[float] = None):
         self.report_path = report_path
         self.strict_mode = strict_mode
+        # network=False skips DOI and URL lookups; budget caps the wall-clock
+        # seconds spent on them. Entries left unchecked count as not_checked.
+        self.network = network
+        self.budget = budget
+        self.deadline = None
+        self.not_checked = 0
+        self.checked = 0
         self.content = self._read_report()
         self.suspicious = []
         self.verified = []
@@ -256,6 +264,19 @@ class CitationVerifier:
             result['issues'].extend(hallucination_issues)
             result['status'] = 'suspicious'
 
+        # Network lookups are skipped offline or once the time budget is spent.
+        if not self.network or (self.deadline is not None and time.monotonic() >= self.deadline):
+            reason = 'offline' if not self.network else 'time budget spent'
+            result['issues'].append(f'network check skipped ({reason})')
+            if result['status'] != 'suspicious':
+                result['status'] = 'not_checked'
+            if not entry['doi'] and not entry['url']:
+                result['issues'].append("No DOI or URL - cannot verify")
+                result['status'] = 'suspicious'
+            self.not_checked += 1
+            return result
+        self.checked += 1
+
         # STEP 2: Has DOI?
         if entry['doi']:
             print(f"  [{entry['num']}] Checking DOI {entry['doi']}...", end=' ')
@@ -326,13 +347,17 @@ class CitationVerifier:
 
         print(f"Found {len(entries)} citations\n")
 
+        if self.network and self.budget is not None:
+            self.deadline = time.monotonic() + self.budget
         results = []
         for entry in entries:
+            before = self.checked
             result = self.verify_entry(entry)
             results.append(result)
 
-            # Rate limiting
-            time.sleep(0.5)
+            # Rate limiting, only after a network lookup
+            if self.checked > before:
+                time.sleep(0.5)
 
         # Summarize
         print(f"\n{'='*60}")
@@ -342,12 +367,13 @@ class CitationVerifier:
         verified = [r for r in results if r['status'] == 'verified']
         url_verified = [r for r in results if r['status'] == 'url_verified']
         suspicious = [r for r in results if r['status'] == 'suspicious']
-        unverified = [r for r in results if r['status'] in ['unverified', 'no_doi', 'unknown']]
+        unverified = [r for r in results if r['status'] in ['unverified', 'no_doi', 'unknown', 'not_checked']]
 
         print(f'DOI Verified: {len(verified)}/{len(results)}')
         print(f'URL Verified: {len(url_verified)}/{len(results)}')
         print(f'Suspicious: {len(suspicious)}/{len(results)}')
         print(f'Unverified: {len(unverified)}/{len(results)}')
+        print(f'Network checks: {self.checked} run, {self.not_checked} skipped')
         print()
 
         if suspicious:
@@ -413,6 +439,11 @@ Uses free DOI resolver - no API key needed.
         help='Strict mode: fail on any unverified or suspicious citations'
     )
 
+    parser.add_argument('--offline', action='store_true',
+                        help='Skip DOI and URL lookups; check the bibliography offline only')
+    parser.add_argument('--budget', type=float, default=None, metavar='SECONDS',
+                        help='Stop network lookups after this many seconds; the rest count as not checked')
+
     args = parser.parse_args()
     report_path = Path(args.report)
 
@@ -420,7 +451,8 @@ Uses free DOI resolver - no API key needed.
         print(f"ERROR: Report file not found: {report_path}")
         sys.exit(1)
 
-    verifier = CitationVerifier(report_path, strict_mode=args.strict)
+    verifier = CitationVerifier(report_path, strict_mode=args.strict,
+                                network=not args.offline, budget=args.budget)
     passed = verifier.verify_all()
 
     sys.exit(0 if passed else 1)

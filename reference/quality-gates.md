@@ -45,6 +45,9 @@ Run these checks on a new layered package:
 `validate_report_package.py --delivery`, `validate_report.py` on the final
 report and every dossier, `verify_citations.py`, embedded retrieval health)
 and prints one summary; each script can also be run alone to repair a failure.
+Bibliography DOI/URL lookups are informational and stop after `--url-budget`
+seconds (default 120); `--offline` skips them. The summary records how many
+ran and how many were skipped, so state skipped lookups in the methodology.
 
 The claim judge's verdict, not the lexical score, decides support; see
 [claim support judge](methodology.md#claim-support-judge). A factual claim

@@ -82,5 +82,46 @@ class FinishDeliveryTests(unittest.TestCase):
                       '(path is recorded but the file is missing)', result['errors'])
 
 
+
+def no_network(*_args, **_kwargs):
+    raise AssertionError('network lookup attempted')
+
+
+class BoundedCitationNetworkTests(FinishDeliveryTests):
+    """The real entry check, with any DOI/URL lookup treated as a test failure."""
+
+    def setUp(self):
+        super().setUp()
+        patch.stopall()  # use the real verify_entry from here on
+        for name in ('verify_doi', 'verify_url'):
+            patcher = patch.object(finish_delivery.verify_citations.CitationVerifier, name, no_network)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_offline_skips_lookups_and_records_it(self):
+        code, summary = finish_delivery.finish(self.path, network=False)
+        self.assertEqual(code, 0, summary)
+        self.assertIn('PASS citations', summary)
+        self.assertRegex(summary, r'network checks: 0 run, [1-9]\d* skipped \(offline\)')
+
+    def test_spent_budget_skips_remaining_lookups(self):
+        code, summary = finish_delivery.finish(self.path, budget=0)
+        self.assertEqual(code, 0, summary)
+        self.assertRegex(summary, r'network checks: 0 run, [1-9]\d* skipped \(time budget spent\)')
+
+    def test_strict_verifier_fails_when_offline(self):
+        verifier = finish_delivery.verify_citations.CitationVerifier(
+            self.report, strict_mode=True, network=False)
+        ok, _ = finish_delivery.quiet(verifier.verify_all)
+        self.assertFalse(ok)
+
+    # The inherited tests need lookups to succeed; they run in the parent class.
+    test_complete_package_is_ready_and_nothing_is_written = None
+    test_unwritten_final_report_fails_before_any_check = None
+    test_report_without_current_health_status_fails = None
+    test_missing_reporting_path_is_reported = None
+    test_package_validator_names_unwritten_dossier = None
+
+
 if __name__ == '__main__':
     unittest.main()
