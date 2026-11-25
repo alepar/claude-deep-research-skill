@@ -2,7 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.validate_report import ReportValidator
+from scripts.validate_report import (MARKDOWN_LINK, ReportValidator, link_target,
+                                     link_text, same_url, unescape_inline)
 
 
 class TestReportValidator(unittest.TestCase):
@@ -68,6 +69,60 @@ class TestReportValidator(unittest.TestCase):
         passed, errors, _ = self.validate_text(report)
         self.assertFalse(passed)
         self.assertTrue(any('dossiers/missing.md' in error for error in errors))
+
+    def test_escaped_local_links_resolve_to_the_unescaped_path(self):
+        for link in (r'[Details](<dossiers/a\&b.md>)', r'[Details](dossiers/a\&b.md)'):
+            with self.subTest(link=link):
+                report = (f'# Answer\n\nClaim [1]. {link}\n\n'
+                          '## Bibliography\n\n[1] [Source](https://example.org/source)\n')
+                passed, errors, _ = self.validate_text(report, ['dossiers/a&b.md'])
+                self.assertTrue(passed, errors)
+
+    def links(self, text):
+        return [(link_text(m), link_target(m)) for m in MARKDOWN_LINK.finditer(text)]
+
+    def test_link_after_escaped_backslash_is_a_link(self):
+        self.assertEqual(self.links(r'a \\[x](https://e.org/y)'), [('x', 'https://e.org/y')])
+        self.assertEqual(self.links(r'a \\\\[x](https://e.org/y)'), [('x', 'https://e.org/y')])
+        self.assertEqual(self.links(r'a \[x](https://e.org/y)'), [])
+        self.assertEqual(self.links(r'a \\\[x](https://e.org/y)'), [])
+        self.assertEqual(self.links('![x](https://e.org/y)'), [])
+
+    def test_bare_destinations_read_backslash_escapes(self):
+        self.assertEqual(self.links(r'[x](https://e.org/a\&b)'), [('x', 'https://e.org/a&b')])
+
+    def test_destinations_decode_references_and_keep_backticks(self):
+        self.assertEqual(self.links('[x](<https://e.org/a&amp;b`c`>)'),
+                         [('x', 'https://e.org/a&b`c`')])
+        self.assertEqual(self.links(r'[x](https://e.org/a&amp;b\`c`)'),
+                         [('x', 'https://e.org/a&b`c`')])
+
+    def test_bare_destination_keeps_balanced_parentheses(self):
+        self.assertEqual(self.links('[x](https://e.org/topic_(alpha)).'),
+                         [('x', 'https://e.org/topic_(alpha)')])
+        self.assertEqual(self.links('([x](https://e.org/a))'), [('x', 'https://e.org/a')])
+
+    def test_unescape_decodes_only_whole_known_entities(self):
+        self.assertEqual(unescape_inline('&not; &amp; &#38; &#x26;'), '¬ & & &')
+        self.assertEqual(unescape_inline('&notit; &bogus; &amp'), '&notit; &bogus; &amp')
+
+    def test_unescape_leaves_code_span_content_literal(self):
+        self.assertEqual(unescape_inline(r'a \* `b \* &amp;` c \`d'), r'a * `b \* &amp;` c `d')
+        self.assertEqual(unescape_inline(r'``x \* ` y`` \*'), r'``x \* ` y`` *')
+
+    def test_same_url_accepts_html_escaped_registry_url(self):
+        target = self.links('[x](https://e.org/?a=1&amp;b=2)')[0][1]
+        self.assertTrue(same_url(target, 'https://e.org/?a=1&amp;b=2'))
+        self.assertTrue(same_url(target, 'https://e.org/?a=1&b=2'))
+        self.assertFalse(same_url(target, 'https://e.org/?a=1&b=3'))
+
+    def test_link_after_escaped_exclamation_mark_is_a_link(self):
+        self.assertEqual(self.links(r'Wow\![t](https://e.org/u)'), [('t', 'https://e.org/u')])
+        self.assertEqual(self.links(r'Wow\\![t](https://e.org/u)'), [])
+
+    def test_numeric_references_decode_as_code_points(self):
+        self.assertEqual(unescape_inline('&#128;&#x9F;&#65;'), '\x80\x9fA')
+        self.assertEqual(unescape_inline('&#0;&#xD800;&#1114112;'), '�' * 3)
 
     def test_citation_and_placeholder_truncation_still_fail(self):
         report = ('# Answer\n\nClaim [1]. TODO. Content continues.\n\n'

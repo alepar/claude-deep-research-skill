@@ -187,6 +187,45 @@ class TestHTMLVerifier(unittest.TestCase):
         passed, errors = self.verify_text(md, html)
         self.assertTrue(passed, errors)
 
+    def bib_case(self, destination, href):
+        md = ('# Answer\n\nA clear factual finding appears here [1].\n\n'
+              f'## Bibliography\n\n[1] [Source A]({destination})\n')
+        html = ('<html><head><title>Answer</title></head><body>'
+                '<h1>Answer</h1><p>A clear factual finding appears here [1].</p>'
+                '<h2>Bibliography</h2><p>[1] '
+                f'<a href="{href}">Source A</a></p></body></html>')
+        return self.verify_text(md, html)
+
+    def test_escaped_bibliography_destinations_match_rendered_href(self):
+        cases = [
+            (r'<https://example.org/q?a=1\&b=2>', 'https://example.org/q?a=1&amp;b=2'),
+            (r'<https://example.org/back\\slash>', 'https://example.org/back\\slash'),
+            (r'<https://example.org/x?a=\<b\>>', 'https://example.org/x?a=&lt;b&gt;'),
+            ('<https://example.org/a%20b>', 'https://example.org/a%20b'),
+            ('https://example.org/topic_(alpha)', 'https://example.org/topic_(alpha)'),
+        ]
+        for destination, href in cases:
+            with self.subTest(destination=destination):
+                passed, errors = self.bib_case(destination, href)
+                self.assertTrue(passed, errors)
+
+    def test_escaped_bibliography_destination_still_rejects_wrong_href(self):
+        passed, errors = self.bib_case(r'<https://example.org/q?a=1\&b=2>',
+                                       'https://example.org/q?a=1&amp;b=3')
+        self.assertFalse(passed)
+
+    def test_escaped_local_link_matches_rendered_href(self):
+        md = ('# Answer\n\nA clear factual finding appears here [1]. '
+              '[Details](<dossiers/a\\&b.md>)\n\n'
+              '## Bibliography\n\n[1] [Source A](https://example.org/a)\n')
+        html = ('<html><head><title>Answer</title></head><body><h1>Answer</h1>'
+                '<p>A clear factual finding appears here [1]. '
+                '<a href="dossiers/a&amp;b.md">Details</a></p>'
+                '<h2>Bibliography</h2><p>[1] '
+                '<a href="https://example.org/a">Source A</a></p></body></html>')
+        passed, errors = self.verify_text(md, html, ['dossiers/a&b.md'])
+        self.assertTrue(passed, errors)
+
     def test_adjacent_rendered_citations_preserve_grouped_attribution(self):
         md = ('# Answer\n\nThe finding has two sources [1, 2].\n\n'
               '## Bibliography\n\n[1] Source A https://example.org/a\n'

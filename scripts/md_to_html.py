@@ -4,9 +4,18 @@ Markdown to HTML converter for research reports
 Properly converts markdown sections to HTML while preserving structure and formatting
 """
 
+import html as html_lib
 import re
 from typing import Tuple
 from pathlib import Path
+
+if __package__:
+    from .validate_report import MARKDOWN_LINK, link_target, link_text, unescape_inline
+else:
+    from validate_report import MARKDOWN_LINK, link_target, link_text, unescape_inline
+
+BIB_LINE = re.compile(r'^\[(\d+)\]\s*(.+)$')
+OLD_BIB_ENTRY = re.compile(r'\[(\d+)\]\s*(.+?)\s*-\s*(https?://[^\s\)]+)')
 
 
 def convert_markdown_to_html(markdown_text: str) -> Tuple[str, str]:
@@ -120,23 +129,53 @@ def _convert_bibliography_section(markdown: str) -> str:
     if not markdown.strip():
         return ""
 
-    html = markdown
-
-    # Convert each [N] citation to a proper bibliography entry
-    # Look for patterns like [1] Title - URL
-    html = re.sub(
-        r'\[(\d+)\]\s*(.+?)\s*-\s*(https?://[^\s\)]+)',
-        r'<div class="bib-entry"><span class="bib-number">[\1]</span> <a href="\3" target="_blank">\2</a></div>',
-        html
-    )
-
-    # Convert any remaining **bold** sections
-    html = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html)
+    lines = []
+    for line in markdown.split('\n'):
+        entry = _bibliography_entry(line.strip())
+        lines.append(entry if entry is not None else re.sub(
+            r'\*\*(.+?)\*\*', r'<strong>\1</strong>', html_lib.escape(unescape_inline(line))))
+    html = '\n'.join(lines)
 
     # Wrap in bibliography content div
     html = f'<div class="bibliography-content">{html}</div>'
 
     return html
+
+
+def _bib_div(number: str, inner: str) -> str:
+    return f'<div class="bib-entry"><span class="bib-number">[{number}]</span> {inner}</div>'
+
+
+def _href(url: str) -> str:
+    """An attribute-safe href; spaces and control bytes are percent-encoded."""
+    url = re.sub(r'[\x00-\x20\x7f]', lambda m: f'%{ord(m.group()):02X}', url)
+    return html_lib.escape(url, quote=True)
+
+
+def _bibliography_entry(line: str):
+    """Render one [N] bibliography line, or None if the line is not one.
+
+    A Markdown link to an http(s) URL, escaped or raw, becomes the entry's
+    link; the old "Title - URL" form is still read.
+    """
+    match = BIB_LINE.match(line)
+    if not match:
+        return None
+    number, rest = match.groups()
+    for link in MARKDOWN_LINK.finditer(rest):
+        url = link_target(link)
+        if re.match(r'https?://', url):
+            before = html_lib.escape(unescape_inline(rest[:link.start()]))
+            after = html_lib.escape(unescape_inline(rest[link.end():]))
+            anchor = (f'<a href="{_href(url)}" target="_blank">'
+                      f'{html_lib.escape(link_text(link))}</a>')
+            return _bib_div(number, before + anchor + after)
+    old = OLD_BIB_ENTRY.match(line)
+    if old:
+        anchor = (f'<a href="{_href(old.group(3))}" target="_blank">'
+                  f'{html_lib.escape(old.group(2))}</a>')
+        return _bib_div(old.group(1), anchor) + html_lib.escape(line[old.end():])
+    return None
 
 
 def _convert_lists(html: str) -> str:

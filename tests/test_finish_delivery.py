@@ -1,6 +1,7 @@
 """One read-only delivery command for the session that wrote the report."""
 
 import hashlib
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -114,6 +115,23 @@ class BoundedCitationNetworkTests(FinishDeliveryTests):
             self.report, strict_mode=True, network=False)
         ok, _ = finish_delivery.quiet(verifier.verify_all)
         self.assertFalse(ok)
+
+    def test_escaped_bibliography_entries_are_ready(self):
+        # A registered source whose title needs escaping, written the way the
+        # escaping writer writes it. The URL stays: the source ID derives from it.
+        title = '1. First [draft] study & `notes`'
+        entry = r'[1] [1\. First \[draft\] study \& \`notes\`](<https://example.org/study>)'
+        sources = self.path / 'sources.jsonl'
+        sources.write_text(sources.read_text()
+                           .replace('"First study"', json.dumps(title)))
+        for path in [self.report, *sorted((self.path / 'dossiers').glob('*.md'))]:
+            path.write_text(path.read_text().replace(
+                '[1] [First study](https://example.org/study)', entry))
+        self.assertIn(entry, self.report.read_text())
+        code, summary = finish_delivery.finish(self.path, network=False)
+        self.assertEqual(code, 0, summary)
+        self.assertIn('PASS package', summary)
+        self.assertIn('PASS citations', summary)
 
     # The inherited tests need lookups to succeed; they run in the parent class.
     test_complete_package_is_ready_and_nothing_is_written = None

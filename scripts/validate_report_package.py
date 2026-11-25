@@ -11,9 +11,11 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 try:
-    from .validate_report import MARKDOWN_LINK
+    from .validate_report import (MARKDOWN_LINK, link_target, link_text, same_url,
+                                  unescape_inline)
 except ImportError:
-    from validate_report import MARKDOWN_LINK
+    from validate_report import (MARKDOWN_LINK, link_target, link_text, same_url,
+                                 unescape_inline)
 
 
 ANCHOR = re.compile(r'<!--\s*claim:\s*([^;\s]+);\s*evidence:\s*([^;\s]+);\s*source:\s*([^\s]+)\s*-->')
@@ -163,15 +165,16 @@ def check_bibliography(markdown, sources, errors, label='final report'):
         source = source_order[number - 1]
         title = source.get('title')
         locator = source.get('raw_url')
-        links = [(match.group(0)[1:].split('](', 1)[0],
-                  match.group(1) or match.group(2))
+        links = [(link_text(match), link_target(match))
                  for match in MARKDOWN_LINK.finditer(entry)]
         title_links = [target for text, target in links
                        if isinstance(title, str) and title.casefold() in text.casefold()]
-        if title_links:
-            matching_url = all(target == locator for target in title_links)
+        if not isinstance(locator, str):
+            matching_url = False
+        elif title_links:
+            matching_url = all(same_url(target, locator) for target in title_links)
         elif links:
-            matching_url = any(target == locator for _, target in links)
+            matching_url = any(same_url(target, locator) for _, target in links)
         else:
             bare_urls = {candidate for match in re.finditer(
                 r'(?<!\S)([a-z][a-z0-9+.-]*://[^\s<>]+)', entry, re.IGNORECASE)
@@ -179,8 +182,9 @@ def check_bibliography(markdown, sources, errors, label='final report'):
                                   match.group(1).rstrip('.,;!?'),
                                   match.group(1).rstrip('.,;!?)]}'))}
             matching_url = locator in bare_urls
-        if (not title or not locator or title.casefold() not in entry.casefold() or
-                not matching_url):
+        if (not title or not locator or not matching_url or
+                title.casefold() not in entry.casefold() and
+                title.casefold() not in unescape_inline(entry).casefold()):
             errors.append(f'{label} bibliography [{number}] does not match registered source')
     for group in re.findall(r'\[(\d+(?:,\s*\d+)*)\]', body):
         for raw_number in group.split(','):
@@ -298,7 +302,7 @@ def verify(directory, delivery=False):
             errors.append(f'final report omits active high-priority facet: {fid}')
         linked = set()
         for match in MARKDOWN_LINK.finditer(final):
-            target = match.group(1) or match.group(2)
+            target = link_target(match)
             parsed = urlsplit(target)
             if parsed.scheme or parsed.netloc:
                 continue

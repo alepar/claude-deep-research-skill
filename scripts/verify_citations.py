@@ -27,6 +27,11 @@ import json
 import time
 from datetime import datetime
 
+if __package__:
+    from .validate_report import MARKDOWN_LINK, link_target, link_text
+else:
+    from validate_report import MARKDOWN_LINK, link_target, link_text
+
 class CitationVerifier:
     """Verify citations in research report"""
 
@@ -69,8 +74,8 @@ class CitationVerifier:
 
     def extract_bibliography(self) -> List[Dict]:
         """Extract bibliography entries from report"""
-        pattern = r'## Bibliography(.*?)(?=##|\Z)'
-        match = re.search(pattern, self.content, re.DOTALL | re.IGNORECASE)
+        pattern = r'^## Bibliography(.*?)(?=^##|\Z)'
+        match = re.search(pattern, self.content, re.DOTALL | re.IGNORECASE | re.MULTILINE)
 
         if not match:
             self.errors.append("No Bibliography section found")
@@ -108,15 +113,16 @@ class CitationVerifier:
         for entry in entries:
             raw = entry['raw']
             year_match = re.search(r'\((\d{4})\)', raw)
-            markdown_link = re.search(r'\[([^\]]+)\]\(\s*(https?://[^\s)]+)\s*\)', raw)
+            markdown_link = next((match for match in MARKDOWN_LINK.finditer(raw)
+                                  if re.match(r'https?://', link_target(match))), None)
             quoted_title = re.search(r'"([^"]+)"', raw)
-            url_match = re.search(r'https?://[^\s)]+', raw)
-            url = markdown_link.group(2) if markdown_link else (
+            url_match = re.search(r'https?://[^\s)<>]+', raw)
+            url = link_target(markdown_link) if markdown_link else (
                 url_match.group(0).rstrip('.,;') if url_match else None)
             doi_match = re.search(r'doi\.org/(10\.[^\s)]+)', url or '')
             entry.update({
                 'year': year_match.group(1) if year_match else None,
-                'title': markdown_link.group(1) if markdown_link else (
+                'title': link_text(markdown_link) if markdown_link else (
                     quoted_title.group(1) if quoted_title else None),
                 'doi': doi_match.group(1) if doi_match else None,
                 'url': url,
@@ -166,7 +172,9 @@ class CitationVerifier:
             return False, "No URL"
 
         try:
-            # HEAD request to check accessibility without downloading
+            # HEAD request to check accessibility without downloading. A URL
+            # cannot carry a space or control byte; send those percent-encoded.
+            url = re.sub(r'[\x00-\x20\x7f]', lambda m: f'%{ord(m.group()):02X}', url)
             req = request.Request(url, method='HEAD')
             req.add_header('User-Agent', 'Mozilla/5.0 (Research Citation Verifier)')
 

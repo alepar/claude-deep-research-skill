@@ -23,6 +23,53 @@ def marker(claim, evidence, source):
     return f'<!-- claim: {claim}; evidence: {evidence}; source: {source} -->'
 
 
+def md_text(value):
+    """Mirror of the writer's Markdown text escaping, for synthetic entries."""
+    lead = len(value) - len(value.lstrip(' '))
+    trail = len(value) - len(value.rstrip(' ')) if lead < len(value) else 0
+    out, i, start = [], 0, True
+    while i < len(value):
+        char = value[i]
+        if char == ' ' and (i < lead or i >= len(value) - trail):
+            out.append('&#32;')
+        elif ord(char) < 32 or char == '\x7f':
+            out.append(f'&#{ord(char)};')
+        elif char in '\\`*_[]<>&~!' or start and char in '#-+=':
+            out.append('\\' + char)
+        elif start and char in '0123456789':
+            end = i
+            while end < len(value) and value[end] in '0123456789':
+                end += 1
+            out.append(value[i:end])
+            if end < len(value) and value[end] in '.)':
+                out.append('\\' + value[end])
+                end += 1
+            i, start = end, False
+            continue
+        else:
+            out.append(char)
+        start = False
+        i += 1
+    return ''.join(out)
+
+
+def md_destination(url):
+    """Mirror of the writer's angle-bracket link destination."""
+    out = []
+    for char in url:
+        if ord(char) <= 32 or char == '\x7f':
+            out.append(f'%{ord(char):02X}')
+        elif char in '\\<>&':
+            out.append('\\' + char)
+        else:
+            out.append(char)
+    return '<' + ''.join(out) + '>'
+
+
+def md_link(title, url):
+    return f'[{md_text(title)}]({md_destination(url)})'
+
+
 class TestReportPackage(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -430,6 +477,74 @@ class TestReportPackage(unittest.TestCase):
             '[1] [Alpha source](https://example.org/alpha)',
             '[1] [Beta source](https://example.org/beta)')
         self.assert_invalid('bibliography [1] does not match registered source')
+
+    def use_entry(self, title, url, entry):
+        self.sources[0]['title'] = title
+        self.sources[0]['raw_url'] = url
+        old = '[Alpha source](https://example.org/alpha)'
+        self.final = self.final.replace(old, entry)
+        self.alpha = self.alpha.replace(old, entry)
+
+    def test_bibliography_accepts_escaped_hostile_titles_and_urls(self):
+        cases = [
+            ('Alpha [draft] source', 'https://example.org/a b'),
+            ('Tom & Jerry', 'https://example.org/topic_(alpha)'),
+            ('The `grep` manual', 'https://example.org/x?a=<b>&c=d'),
+            ('*bold* _under_ ~strike~ !bang', 'https://example.org/back\\slash'),
+            ('1. Ordered start', 'https://example.org/tab\there'),
+            ('2) Paren start', 'https://example.org/pre%20encoded'),
+            ('  Padded title  ', 'https://example.org/edge%7F'),
+            ('Line one\r\nLine two', 'https://example.org/one'),
+            ('[text](http://example.com/a_(b))', 'https://example.org/a_(b) c'),
+            ('# Hash <tag> \\ back', 'https://example.org/hash'),
+            ('+plus -minus =equals', 'https://example.org/plus'),
+            ('Fish &amp; chips &#38;', 'https://example.org/ref'),
+        ]
+        for title, url in cases:
+            with self.subTest(title=title, url=url):
+                self.setUp()
+                self.use_entry(title, url, md_link(title, url))
+                code, result = self.run_check(delivery=True)
+                self.assertEqual((code, result['status']), (0, 'ok'), result)
+
+    def test_escaped_entry_examples_match_writer_output(self):
+        self.assertEqual(md_link('1. A [b] & `c`', 'https://example.org/a b<c>'),
+                         r'[1\. A \[b\] \& \`c\`](<https://example.org/a%20b\<c\>>)')
+        self.assertEqual(md_text(' x\r\n '), '&#32;x&#13;&#10;&#32;')
+
+    def test_escaped_bibliography_refuses_mismatching_title(self):
+        self.use_entry('Alpha [draft] source', 'https://example.org/a b',
+                       md_link('Alpha [final] source', 'https://example.org/a b'))
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_escaped_bibliography_refuses_mismatching_destination(self):
+        self.use_entry('Alpha [draft] source', 'https://example.org/a b',
+                       md_link('Alpha [draft] source', 'https://example.org/a c'))
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_escaped_title_cannot_hide_wrong_target_link(self):
+        title = '[text](https://example.org/alpha)'
+        self.use_entry(title, 'https://example.org/alpha',
+                       md_link(title, 'https://attacker.example/'))
+        self.assert_invalid('bibliography [1] does not match registered source')
+
+    def test_old_raw_entries_are_still_accepted(self):
+        cases = [
+            ('Tom & Jerry', 'https://example.org/alpha',
+             '[Tom & Jerry](https://example.org/alpha)'),
+            ('Alpha [PDF] source', 'https://example.org/alpha',
+             'Alpha [PDF] source — https://example.org/alpha'),
+            ('Alpha source', 'https://example.org/a%20b',
+             '[Alpha source](<https://example.org/a%20b>)'),
+            ('Alpha source', 'https://example.org/alpha?a=1&amp;b=2',
+             '[Alpha source](https://example.org/alpha?a=1&amp;b=2)'),
+        ]
+        for title, url, entry in cases:
+            with self.subTest(entry=entry):
+                self.setUp()
+                self.use_entry(title, url, entry)
+                code, result = self.run_check(delivery=True)
+                self.assertEqual((code, result['status']), (0, 'ok'), result)
 
     def test_dossier_anchor_claim_must_be_declared(self):
         self.manifest['reporting']['dossiers'][0]['claim_ids'] = []

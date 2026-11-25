@@ -8,9 +8,9 @@ from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
 if __package__:
-    from .validate_report import MARKDOWN_LINK, citation_numbers
+    from .validate_report import MARKDOWN_LINK, citation_numbers, link_target, link_text, same_url
 else:
-    from validate_report import MARKDOWN_LINK, citation_numbers
+    from validate_report import MARKDOWN_LINK, citation_numbers, link_target, link_text, same_url
 
 
 def words(value: str) -> str:
@@ -22,7 +22,7 @@ def visible_markdown(value: str) -> str:
     """Remove Markdown syntax that a normal renderer does not display."""
     value = re.sub(r'<!--.*?-->', '', value, flags=re.S)
     value = re.sub(MARKDOWN_LINK,
-                   lambda match: match.group(0).split('](')[0][1:], value)
+                   link_text, value)
     return re.sub(r'^#{1,6}\s+', '', value, flags=re.M)
 
 
@@ -174,7 +174,7 @@ class HTMLVerifier:
         for paragraph in re.split(r'\n\s*\n', md_body):
             if re.match(r'^#{1,6}\s+', paragraph):
                 paragraph = re.sub(r'^#{1,6}\s+.*$', '', paragraph, flags=re.M)
-            paragraph = re.sub(MARKDOWN_LINK, lambda match: match.group(0).split('](')[0][1:], paragraph)
+            paragraph = re.sub(MARKDOWN_LINK, link_text, paragraph)
             paragraph = re.sub(r'\[\d+(?:,\s*\d+)*\]', '', paragraph)
             expected = words(paragraph)
             if len(expected.split()) >= 4 and expected not in html_words:
@@ -189,7 +189,7 @@ class HTMLVerifier:
             self.errors.append('Source citation placement changed in HTML body')
 
     def _matches_bibliography_href(self, href, link_targets, urls):
-        if href in link_targets or href in urls:
+        if any(same_url(target, href) for target in [*link_targets, *urls]):
             return True
         rendered = urlsplit(href)
         if rendered.scheme or rendered.netloc or not rendered.path:
@@ -234,10 +234,9 @@ class HTMLVerifier:
             number, entry = match.group(1), match.group(2).strip()
             entry_title = re.sub(r'https?://\S+', '', entry)
             entry_title = re.sub(MARKDOWN_LINK,
-                                 lambda match: match.group(0).split('](')[0][1:], entry_title)
+                                 link_text, entry_title)
             entry_title = words(entry_title)
-            link_targets = {link.group(1) or link.group(2)
-                            for link in MARKDOWN_LINK.finditer(entry)}
+            link_targets = {link_target(link) for link in MARKDOWN_LINK.finditer(entry)}
             urls = [target for target in link_targets
                     if target.startswith(('http://', 'https://'))]
             urls.extend(re.findall(r'https?://[^\s<>]+', MARKDOWN_LINK.sub('', entry)))
@@ -260,7 +259,8 @@ class HTMLVerifier:
                          for candidate in (match.group(0), match.group(0).rstrip('.,;!?'))}
             rendered_title = words(re.sub(r'https?://\S+', '', rendered_entry))
             if ((entry_title and entry_title not in rendered_title)
-                    or any(url not in bare_urls and url not in entry_hrefs for url in urls)
+                    or any(not any(same_url(url, seen) for seen in [*bare_urls, *entry_hrefs])
+                           for url in urls)
                     or any(not self._matches_bibliography_href(href, link_targets, urls)
                            for href in entry_hrefs)):
                 self.errors.append(f'Missing or changed bibliography entry [{number}] in HTML')
@@ -274,7 +274,7 @@ class HTMLVerifier:
                 if not path.is_absolute():
                     local_hrefs.add((self.html_path.parent / path).resolve())
         for match in MARKDOWN_LINK.finditer(md):
-            target = match.group(1) or match.group(2)
+            target = link_target(match)
             parsed = urlsplit(target)
             if parsed.scheme or parsed.netloc or not parsed.path:
                 continue
